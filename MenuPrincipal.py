@@ -2,9 +2,10 @@
 """
 MenuPrincipal.py
 Menu tipo do-while con 5 opciones.
-    Opcion 1: Convertir TXT de precios a Excel (programa principal)
+    Opcion 1: Convertir TXT de precios a Excel
+    Opcion 2: Lista en Bs (convierte un Excel de precios a Bolivares)
     Opcion 5: Salir / cerrar el programa
-    Opciones 2, 3, 4: reservadas (en desarrollo)
+    Opciones 3, 4: reservadas (en desarrollo)
 """
 import os
 import sys
@@ -27,7 +28,7 @@ def mostrar_menu():
     print('                MENU PRINCIPAL')
     print('=' * 48)
     print('  1. Convertir TXT de precios a Excel')
-    print('  2. (En desarrollo)')
+    print('  2. Lista en Bs')
     print('  3. (En desarrollo)')
     print('  4. (En desarrollo)')
     print('  5. Salir')
@@ -42,7 +43,10 @@ def main():
         if opcion == '1':
             conversor.main()
             preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion in ('2', '3', '4'):
+        elif opcion == '2':
+            conversor.main_lista_bs()
+            preguntar('\n  Presiona Enter para volver al menu...')
+        elif opcion in ('3', '4'):
             print(f'\n  Opcion {opcion} en desarrollo.')
             preguntar('  Presiona Enter para continuar...')
         elif opcion == '5':

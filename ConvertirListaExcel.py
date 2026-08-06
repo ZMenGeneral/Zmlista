@@ -1,29 +1,39 @@
 # -*- coding: utf-8 -*-
 """
 ConvertirListaExcel.py
-Convierte listas de precios en TXT (ancho fijo, Windows-1252) y rellena la
-plantilla "LISTA base.xlsx" generando un archivo nuevo:
 
-    "Lista Zm DD-MM-AAAA.xlsx"
+OPCION 1 - Lista de precios (TXT -> Excel):
+    Convierte listas de precios en TXT (ancho fijo, Windows-1252) y rellena la
+    plantilla "LISTA base.xlsx" generando "Lista Zm DD-MM-AAAA.xlsx".
+
+OPCION 2 - Lista en Bs (Excel -> Excel):
+    Lee un Excel de lista de precios (normalmente el generado en la opcion 1),
+    rellena la plantilla "LISTA Base Bs.xlsx" generando "Lista Zm Bs DD-MM-AAAA.xlsx".
+    Pide el monto del dia (Z), multiplica la columna PRECIO por Z y reemplaza la
+    X del mensaje "COMPRAS A PARTIR DE: X Bs" por 450 * Z.
 
 Uso:
-    python ConvertirListaExcel.py                          (abre explorador de archivos)
+    python ConvertirListaExcel.py                          (opcion 1, abre explorador)
     python ConvertirListaExcel.py "C:/ruta/archivo.txt"
     python ConvertirListaExcel.py "C:/ruta/carpeta"        (convierte todos los *.txt)
+    python ConvertirListaExcel.py --bs "C:/ruta/lista.xlsx" [Z]
 
-Comportamiento:
+Comportamiento opcion 1:
     - Quita productos con existencia 0
     - Limpia la categoria (solo para el orden; no se escribe en la plantilla)
     - Ordena por Categoria y luego por Codigo
     - Rellena la plantilla LISTA base:
-        B = CODIGO
-        C = DESCRIPCION
-        D = MODELO  (marca del vehiculo, ej: CHEVROLET / FORD)
-        E = MARCA   (marca del proveedor, ej: MELLING)
-        F = PRECIO
-        G = CANT    (se deja vacia)
+        B = CODIGO, C = DESCRIPCION, D = MODELO (marca vehiculo),
+        E = MARCA (marca proveedor), F = PRECIO, G = CANT (vacia)
     - Actualiza la fecha (celda B10) con la fecha de hoy
-    - Conserva el logo y el formato de la plantilla
+
+Comportamiento opcion 2:
+    - Pide el archivo Excel de origen y el monto del dia (Z)
+    - Rellena la plantilla LISTA Base Bs:
+        B = CODIGO, C = DESCRIPCION, D = MODELO, E = MARCA,
+        F = PRECIO x Z, G = CANT (se copia si existe)
+    - Actualiza la fecha (B10) y el mensaje "COMPRAS A PARTIR DE: X Bs"
+      con X = 450 x Z
 """
 import os
 import re
@@ -52,6 +62,25 @@ def parse_number(value):
     clean = value.strip().replace('.', '').replace(',', '.')
     try:
         return float(clean)
+    except ValueError:
+        return None
+
+
+def parse_monto(value):
+    """Interpreta un monto ingresado por el usuario: '38.5', '38,5', '38,50',
+    '1.456,50' o '1,456.50'."""
+    if not value:
+        return None
+    s = value.strip().replace('Bs', '').replace('$', '').replace(' ', '')
+    if not s:
+        return None
+    if ',' in s and '.' in s:
+        s = s.replace('.', '').replace(',', '.')
+    elif ',' in s:
+        s = s.replace(',', '.')
+    try:
+        v = float(s)
+        return v
     except ValueError:
         return None
 
@@ -108,21 +137,17 @@ def _xml_bytes(root):
             + ET.tostring(root, encoding='UTF-8'))
 
 
-def _prepare_shared_strings(ss_data, fecha_text, valores):
-    """Devuelve (bytes_sharedStrings, diccionario valor->indice)."""
+def _prepare_shared_strings(ss_data, reemplazos, valores):
+    """Devuelve (bytes_sharedStrings, diccionario valor->indice).
+    reemplazos = dict {texto_actual: texto_nuevo} aplicado a cadenas existentes."""
     sst = ET.fromstring(ss_data)
     sis = [e for e in sst if _localname(e.tag) == 'si']
 
-    indice_por_valor = {}
+    # Aplica reemplazos a las cadenas existentes (fecha, mensaje COMPRAS, etc.)
     for i, si in enumerate(sis):
-        t = si.findtext(f'{{{NS}}}t') or ''
-        indice_por_valor[t] = i
-
-    # Reemplaza la cadena "DD/MM/AAAA" por la fecha de hoy
-    if 'DD/MM/AAAA' in indice_por_valor:
-        si_fecha = sis[indice_por_valor['DD/MM/AAAA']]
-        t_el = si_fecha.find(f'{{{NS}}}t')
-        t_el.text = fecha_text
+        t_el = si.find(f'{{{NS}}}t')
+        if t_el is not None and t_el.text in reemplazos:
+            t_el.text = reemplazos[t_el.text]
 
     indice_por_valor = {}
     for i, si in enumerate(sis):
@@ -143,8 +168,10 @@ def _prepare_shared_strings(ss_data, fecha_text, valores):
     return _xml_bytes(sst), indice_por_valor
 
 
-def _fill_sheet(sheet_data, filas, string_idx):
-    """Rellena las celdas de la hoja. filas = lista de dicts por producto."""
+def _fill_sheet(sheet_data, filas, string_idx, specs):
+    """Rellena las celdas de la hoja.
+    filas = lista de dicts por producto.
+    specs = lista de (num_columna, clave, tipo) con tipo 's' (texto) o 'n' (numero)."""
     root = ET.fromstring(sheet_data)
     sheet_data_el = root.find(f'{{{NS}}}sheetData')
 
@@ -152,8 +179,6 @@ def _fill_sheet(sheet_data, filas, string_idx):
     for row_el in sheet_data_el:
         if _localname(row_el.tag) == 'row':
             filas_por_numero[int(row_el.get('r'))] = row_el
-
-    max_fila = max(filas_por_numero) if filas_por_numero else 0
 
     def obtener_fila(num):
         row_el = filas_por_numero.get(num)
@@ -198,35 +223,31 @@ def _fill_sheet(sheet_data, filas, string_idx):
     for i, r in enumerate(filas):
         num = 13 + i
         row_el = obtener_fila(num)
-        if r['codigo']:
-            poner_valor(obtener_celda(row_el, f'B{num}', 2), r['codigo'], True)
-        if r['desc']:
-            poner_valor(obtener_celda(row_el, f'C{num}', 3), r['desc'], True)
-        if r['marca']:
-            poner_valor(obtener_celda(row_el, f'D{num}', 4), r['marca'], True)
-        if r['prov']:
-            poner_valor(obtener_celda(row_el, f'E{num}', 5), r['prov'], True)
-        if r['precio'] is not None:
-            poner_valor(obtener_celda(row_el, f'F{num}', 6), r['precio'], False)
+        for col_num, clave, tipo in specs:
+            valor = r.get(clave)
+            if valor is None or (isinstance(valor, str) and not valor.strip()):
+                continue
+            letra = chr(ord('A') + col_num - 1)
+            poner_valor(obtener_celda(row_el, f'{letra}{num}', col_num), valor, tipo == 's')
 
     return _xml_bytes(root)
 
 
-def build_from_base(rows, base_path, out_path):
-    """Rellena la plantilla LISTA base con los productos y guarda out_path."""
-    fecha = date.today().strftime('%d/%m/%Y')
-
+def build_from_base(rows, base_path, out_path, reemplazos, specs):
+    """Rellena la plantilla base con los productos y guarda out_path."""
     valores = []
     for r in rows:
-        for campo in ('codigo', 'desc', 'marca', 'prov'):
-            v = r[campo]
+        for _, clave, tipo in specs:
+            if tipo != 's':
+                continue
+            v = r.get(clave)
             if v and v not in valores:
                 valores.append(v)
 
     z = zipfile.ZipFile(base_path)
     ss_bytes, string_idx = _prepare_shared_strings(
-        z.read('xl/sharedStrings.xml'), fecha, valores)
-    sheet_bytes = _fill_sheet(z.read('xl/worksheets/sheet1.xml'), rows, string_idx)
+        z.read('xl/sharedStrings.xml'), reemplazos, valores)
+    sheet_bytes = _fill_sheet(z.read('xl/worksheets/sheet1.xml'), rows, string_idx, specs)
 
     i = 0
     while True:
@@ -263,8 +284,162 @@ def ask_file_dialog():
     return path
 
 
+def fmt_monto(v):
+    """Formatea un monto con separador de miles español: 17325.0 -> '17.325'."""
+    if v == int(v):
+        s = f"{int(v):,}"
+    else:
+        s = f"{v:,.2f}"
+    return s.replace(',', 'X').replace('.', ',').replace('X', '.')
+
+
+def ask_excel_dialog():
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    path = filedialog.askopenfilename(
+        title='Selecciona el Excel de lista de precios',
+        filetypes=[('Archivos Excel', '*.xlsx'), ('Todos los archivos', '*.*')],
+        initialdir=os.path.dirname(os.path.abspath(__file__)),
+    )
+    root.destroy()
+    return path
+
+
+def read_excel_rows(path):
+    """Lee un Excel de lista (como el de la opcion 1) y devuelve filas con
+    claves codigo, desc, modelo, marca, precio, cant."""
+    from openpyxl import load_workbook
+
+    wb = load_workbook(path, data_only=True)
+    ws = wb.active
+
+    hdr_row = None
+    cols = {}
+    for r in range(1, 21):
+        encontradas = {}
+        for c in range(1, ws.max_column + 1):
+            v = ws.cell(r, c).value
+            if isinstance(v, str):
+                u = v.strip().upper()
+                u = u.replace('Í', 'I').replace('Ó', 'O').replace('É', 'E')
+                u = u.replace('Á', 'A').replace('Ú', 'U').replace('Ñ', 'N')
+                key = None
+                if 'CODIGO' in u:
+                    key = 'codigo'
+                elif 'DESCRIPC' in u:
+                    key = 'desc'
+                elif u == 'MODELO':
+                    key = 'modelo'
+                elif u == 'MARCA':
+                    key = 'marca'
+                elif 'PRECIO' in u:
+                    key = 'precio'
+                elif u == 'CANT':
+                    key = 'cant'
+                if key:
+                    encontradas[key] = c
+        if encontradas:
+            hdr_row = r
+            cols = encontradas
+            break
+
+    if not hdr_row or 'codigo' not in cols:
+        raise ValueError('No se encontro la tabla (Codigo/Descripcion/Precio) en el Excel.')
+
+    filas = []
+    for r in range(hdr_row + 1, ws.max_row + 1):
+        cod = ws.cell(r, cols['codigo']).value
+        if cod is None or str(cod).strip() == '':
+            continue
+        precio = ws.cell(r, cols.get('precio', 6)).value
+        if isinstance(precio, str):
+            precio = parse_number(precio)
+        cant = ws.cell(r, cols.get('cant', 7)).value
+        if isinstance(cant, str):
+            cant = parse_number(cant)
+        filas.append({
+            'codigo': str(cod).strip(),
+            'desc': ws.cell(r, cols.get('desc', 3)).value,
+            'modelo': ws.cell(r, cols.get('modelo', 4)).value,
+            'marca': ws.cell(r, cols.get('marca', 5)).value,
+            'precio': precio,
+            'cant': cant,
+        })
+    return filas
+
+
+def main_lista_bs():
+    carpeta_proyecto = os.path.dirname(os.path.abspath(__file__))
+    base_path = os.path.join(carpeta_proyecto, 'LISTA Base Bs.xlsx')
+
+    if not os.path.exists(base_path):
+        print(f'No se encontro la plantilla: {base_path}')
+        return
+
+    origen = sys.argv[2] if len(sys.argv) >= 3 else None
+    if not origen:
+        origen = ask_excel_dialog()
+        if not origen:
+            print('No seleccionaste ningun archivo. Cancelado.')
+            return
+
+    if len(sys.argv) >= 4:
+        z = parse_monto(sys.argv[3])
+    else:
+        z = parse_monto(input('Me indicas el Monto del dia de hoy? '))
+
+    if z is None or z <= 0:
+        print('Monto invalido. Cancelado.')
+        return
+
+    try:
+        rows = read_excel_rows(origen)
+    except Exception as e:
+        print(f'Error al leer el Excel: {e}')
+        return
+
+    if not rows:
+        print('El Excel no tiene productos. Cancelado.')
+        return
+
+    for r in rows:
+        if r['precio'] is not None:
+            r['precio'] = round(r['precio'] * z, 2)
+
+    fecha = date.today().strftime('%d/%m/%Y')
+    x = 450 * z
+    msg_viejo = 'COMPRAS A PARTIR DE:               X Bs'
+    msg_nuevo = 'COMPRAS A PARTIR DE:               ' + fmt_monto(x) + ' Bs'
+
+    reemplazos = {'DD/MM/AAAA': fecha, msg_viejo: msg_nuevo}
+    specs = [
+        (2, 'codigo', 's'),
+        (3, 'desc', 's'),
+        (4, 'modelo', 's'),
+        (5, 'marca', 's'),
+        (6, 'precio', 'n'),
+        (7, 'cant', 'n'),
+    ]
+
+    nombre = 'Lista Zm Bs ' + date.today().strftime('%d-%m-%Y') + '.xlsx'
+    out = os.path.join(carpeta_proyecto, nombre)
+    out = build_from_base(rows, base_path, out, reemplazos, specs)
+
+    print(f"OK: {len(rows)} productos x {z} -> {out}")
+    print(f"Mensaje: {msg_nuevo}")
+
+
 def main():
     args = sys.argv[1:]
+
+    if args and args[0] == '--bs':
+        main_lista_bs()
+        return
+
     origen = args[0] if len(args) >= 1 else None
 
     carpeta_proyecto = os.path.dirname(os.path.abspath(__file__))
@@ -291,6 +466,15 @@ def main():
 
     nombre = 'Lista Zm ' + date.today().strftime('%d-%m-%Y') + '.xlsx'
 
+    reemplazos = {'DD/MM/AAAA': date.today().strftime('%d/%m/%Y')}
+    specs = [
+        (2, 'codigo', 's'),
+        (3, 'desc', 's'),
+        (4, 'marca', 's'),
+        (5, 'prov', 's'),
+        (6, 'precio', 'n'),
+    ]
+
     total = 0
     for idx, item in enumerate(items):
         rows = parse_txt(item)
@@ -307,7 +491,7 @@ def main():
         else:
             out = os.path.join(carpeta_proyecto, nombre)
 
-        out = build_from_base(rows, base_path, out)
+        out = build_from_base(rows, base_path, out, reemplazos, specs)
         print(f"OK: {total_parse} lineas -> {len(rows)} productos "
               f"(se quitaron {removed} con existencia 0) -> {out}")
         total += len(rows)
