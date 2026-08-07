@@ -23,8 +23,13 @@ import json
 import urllib.request
 import urllib.error
 
+import consola
+
 URL_API = 'https://api.zoom.red/canguroazul/getZoomTrackWs'
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+
+CARPETA_PROYECTO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CARPETA_PDFS = os.path.join(CARPETA_PROYECTO, 'pdfs')
 
 ENTREGADAS = ('ENTREGADO AL DESTINO', 'ENTREGADO AL CLIENTE', 'ENTREGADO')
 DISPONIBLES = ('DISPONIBLE PARA EL RETIRO EN TAQUILLA',)
@@ -73,7 +78,7 @@ def ask_pdf_dialog():
     path = filedialog.askopenfilename(
         title='Selecciona el PDF con los numeros de guia',
         filetypes=[('Archivos PDF', '*.pdf'), ('Todos los archivos', '*.*')],
-        initialdir=os.path.dirname(os.path.abspath(__file__)),
+        initialdir=CARPETA_PDFS if os.path.isdir(CARPETA_PDFS) else CARPETA_PROYECTO,
     )
     root.destroy()
     return path
@@ -106,7 +111,7 @@ def formatear_resumen(guia, data):
 
     lineas = []
     lineas.append('=' * 58)
-    lineas.append(f'GUIA: {guia}')
+    lineas.append(consola.cian(consola.negrita(f'GUIA: {guia}')))
 
     if not iz:
         lineas.append('  Estado: GUIA NO ENCONTRADA EN LA BASE DE DATOS')
@@ -139,7 +144,7 @@ def formatear_resumen(guia, data):
         usuario = ((entrega.get('usuario') or {}).get('nombre') or '').strip()
         oficina = ((entrega.get('oficina') or {}).get('nombre') or '').strip()
         lineas.append('-' * 58)
-        lineas.append('  RETIRADA/ENTREGADA: SI')
+        lineas.append(consola.verde('  RETIRADA/ENTREGADA: SI'))
         lineas.append(f'  Fecha de entrega: {_fecha_corta(entrega.get("fechahorareal"))}')
         if receptor:
             lineas.append(f'  Recibida por: {receptor}')
@@ -149,7 +154,7 @@ def formatear_resumen(guia, data):
             lineas.append(f'  Oficina: {oficina}')
     else:
         lineas.append('-' * 58)
-        lineas.append('  RETIRADA/ENTREGADA: NO (aun en proceso)')
+        lineas.append(consola.amarillo('  RETIRADA/ENTREGADA: NO (aun en proceso)'))
 
     if track:
         lineas.append('-' * 58)
@@ -173,7 +178,7 @@ def verificar_guias(guias):
     ok = 0
     error = 0
     for i, guia in enumerate(guias, 1):
-        print(f'\n[{i}/{len(guias)}] Consultando guia {guia} ...')
+        print(f'\n  [{i}/{len(guias)}] Consultando guia {guia} ...')
         try:
             data = consultar(guia)
             cod = data.get('codrespuesta') or ''
@@ -188,11 +193,16 @@ def verificar_guias(guias):
             print(f'  ERROR: {e}')
             error += 1
 
-    print('\n' + '=' * 58)
-    print(f'RESUMEN: {ok} verificadas, {error} con error, total {len(guias)}')
+    print()
+    print('=' * 58)
+    print(consola.cian(consola.negrita(
+        f'  RESUMEN: {ok} verificadas, {error} con error, total {len(guias)}')))
+    print('=' * 58)
 
 
 def main():
+    consola.titulo('OPCION 3 - VERIFICAR ENVIOS ZOOM', ancho=58)
+
     args = sys.argv[1:]
 
     guias = []
@@ -202,8 +212,8 @@ def main():
             print(f'No se encontro el PDF: {path}')
             return
         guias, npags = extraer_guias_pdf(path)
-        print(f'PDF: {path}')
-        print(f'Paginas: {npags}  |  Guias encontradas: {len(guias)}')
+        print(f'  PDF: {path}')
+        print(f'  Paginas: {npags}  |  Guias encontradas: {len(guias)}')
     elif args:
         for a in args:
             g = re.sub(r'\D', '', a)
@@ -212,26 +222,26 @@ def main():
     else:
         path = ask_pdf_dialog()
         if not path:
-            print('No seleccionaste ningun PDF. Cancelado.')
+            print('  No seleccionaste ningun PDF. Cancelado.')
             return
         guias, npags = extraer_guias_pdf(path)
-        print(f'PDF: {path}')
-        print(f'Paginas: {npags}  |  Guias encontradas: {len(guias)}')
+        print(f'  PDF: {path}')
+        print(f'  Paginas: {npags}  |  Guias encontradas: {len(guias)}')
 
     if not guias:
-        manual = input('No se encontraron guias de 10 digitos en el PDF. '
+        manual = input('  No se encontraron guias de 10 digitos en el PDF. '
                        'Escribelas separadas por espacio: ').strip()
         guias = [re.sub(r'\D', '', p) for p in re.split(r'[\s,;]+', manual) if re.sub(r'\D', '', p)]
 
     if not guias:
-        print('No hay guias para verificar. Cancelado.')
+        print('  No hay guias para verificar. Cancelado.')
         return
 
-    print('Guias a verificar:')
-    print('  ' + ', '.join(guias))
-    confirmar = input('Confirmar verificacion? [s/N]: ').strip().lower()
+    print('  Guias a verificar:')
+    print('    ' + ', '.join(guias))
+    confirmar = input('  Confirmar verificacion? [s/N]: ').strip().lower()
     if confirmar not in ('s', 'si', 'y', 'yes'):
-        print('Cancelado.')
+        print('  Cancelado.')
         return
 
     verificar_guias(guias)

@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
 LISTA_PY.xlsx
-Lista Zm*.xlsx
+salidas/
+pdfs/
 ~$*.xlsx

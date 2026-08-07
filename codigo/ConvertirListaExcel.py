@@ -43,6 +43,8 @@ import xml.etree.ElementTree as ET
 from datetime import date
 from xml.sax.saxutils import escape
 
+import consola
+
 NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 NS_MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
 NS_X14AC = 'http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac'
@@ -53,6 +55,11 @@ ET.register_namespace('x14ac', NS_X14AC)
 ET.register_namespace('r', NS_R)
 
 TAIL_RE = re.compile(r'^\s*([\d.,]+)\s+([\d.,]+)\s*$')
+
+CARPETA_CODIGO = os.path.dirname(os.path.abspath(__file__))
+CARPETA_PROYECTO = os.path.dirname(CARPETA_CODIGO)
+CARPETA_PLANTILLAS = os.path.join(CARPETA_PROYECTO, 'plantillas')
+CARPETA_SALIDAS = os.path.join(CARPETA_PROYECTO, 'salidas')
 
 
 def parse_number(value):
@@ -303,7 +310,7 @@ def ask_excel_dialog():
     path = filedialog.askopenfilename(
         title='Selecciona el Excel de lista de precios',
         filetypes=[('Archivos Excel', '*.xlsx'), ('Todos los archivos', '*.*')],
-        initialdir=os.path.dirname(os.path.abspath(__file__)),
+        initialdir=CARPETA_SALIDAS if os.path.isdir(CARPETA_SALIDAS) else CARPETA_PROYECTO,
     )
     root.destroy()
     return path
@@ -373,37 +380,38 @@ def read_excel_rows(path):
 
 
 def main_lista_bs():
-    carpeta_proyecto = os.path.dirname(os.path.abspath(__file__))
-    base_path = os.path.join(carpeta_proyecto, 'LISTA Base Bs.xlsx')
+    consola.titulo('OPCION 2 - LISTA EN Bs (EXCEL -> EXCEL)')
+
+    base_path = os.path.join(CARPETA_PLANTILLAS, 'LISTA Base Bs.xlsx')
 
     if not os.path.exists(base_path):
-        print(f'No se encontro la plantilla: {base_path}')
+        print(f'  No se encontro la plantilla: {base_path}')
         return
 
     origen = sys.argv[2] if len(sys.argv) >= 3 else None
     if not origen:
         origen = ask_excel_dialog()
         if not origen:
-            print('No seleccionaste ningun archivo. Cancelado.')
+            print('  No seleccionaste ningun archivo. Cancelado.')
             return
 
     if len(sys.argv) >= 4:
         z = parse_monto(sys.argv[3])
     else:
-        z = parse_monto(input('Me indicas el Monto del dia de hoy? '))
+        z = parse_monto(input('  Monto del dia de hoy? '))
 
     if z is None or z <= 0:
-        print('Monto invalido. Cancelado.')
+        print('  Monto invalido. Cancelado.')
         return
 
     try:
         rows = read_excel_rows(origen)
     except Exception as e:
-        print(f'Error al leer el Excel: {e}')
+        print(f'  Error al leer el Excel: {e}')
         return
 
     if not rows:
-        print('El Excel no tiene productos. Cancelado.')
+        print('  El Excel no tiene productos. Cancelado.')
         return
 
     for r in rows:
@@ -426,11 +434,14 @@ def main_lista_bs():
     ]
 
     nombre = 'Lista Zm Bs ' + date.today().strftime('%d-%m-%Y') + '.xlsx'
-    out = os.path.join(carpeta_proyecto, nombre)
+    os.makedirs(CARPETA_SALIDAS, exist_ok=True)
+    out = os.path.join(CARPETA_SALIDAS, nombre)
     out = build_from_base(rows, base_path, out, reemplazos, specs)
 
-    print(f"OK: {len(rows)} productos x {z} -> {out}")
-    print(f"Mensaje: {msg_nuevo}")
+    print('-' * 60)
+    print(consola.verde(f'  OK: {len(rows)} productos x {z} -> {out}'))
+    print(consola.verde(f'  Mensaje: {msg_nuevo}'))
+    consola.separador()
 
 
 def main():
@@ -440,19 +451,20 @@ def main():
         main_lista_bs()
         return
 
+    consola.titulo('OPCION 1 - LISTA DE PRECIOS (TXT -> EXCEL)')
+
     origen = args[0] if len(args) >= 1 else None
 
-    carpeta_proyecto = os.path.dirname(os.path.abspath(__file__))
-    base_path = os.path.join(carpeta_proyecto, 'LISTA base.xlsx')
+    base_path = os.path.join(CARPETA_PLANTILLAS, 'LISTA base.xlsx')
 
     if not os.path.exists(base_path):
-        print(f'No se encontro la plantilla: {base_path}')
+        print(f'  No se encontro la plantilla: {base_path}')
         return
 
     if not origen:
         origen = ask_file_dialog()
         if not origen:
-            print('No seleccionaste ningun archivo. Cancelado.')
+            print('  No seleccionaste ningun archivo. Cancelado.')
             return
 
     if os.path.isdir(origen):
@@ -465,6 +477,7 @@ def main():
         items = [origen]
 
     nombre = 'Lista Zm ' + date.today().strftime('%d-%m-%Y') + '.xlsx'
+    os.makedirs(CARPETA_SALIDAS, exist_ok=True)
 
     reemplazos = {'DD/MM/AAAA': date.today().strftime('%d/%m/%Y')}
     specs = [
@@ -487,16 +500,18 @@ def main():
 
         if len(items) > 1:
             base_nombre, ext = os.path.splitext(nombre)
-            out = os.path.join(carpeta_proyecto, f"{base_nombre} ({idx + 1}){ext}")
+            out = os.path.join(CARPETA_SALIDAS, f"{base_nombre} ({idx + 1}){ext}")
         else:
-            out = os.path.join(carpeta_proyecto, nombre)
+            out = os.path.join(CARPETA_SALIDAS, nombre)
 
         out = build_from_base(rows, base_path, out, reemplazos, specs)
-        print(f"OK: {total_parse} lineas -> {len(rows)} productos "
-              f"(se quitaron {removed} con existencia 0) -> {out}")
+        print(consola.verde(f'  OK: {total_parse} lineas -> {len(rows)} productos '
+                            f'(se quitaron {removed} con existencia 0) -> {out}'))
         total += len(rows)
 
-    print(f"Total productos convertidos: {total}")
+    print('-' * 60)
+    print(consola.cian(consola.negrita(f'  Total productos convertidos: {total}')))
+    consola.separador()
 
 
 if __name__ == '__main__':
