@@ -347,6 +347,28 @@ def _escribir_markdown(ruta_md, clientes, pdf_path, fecha_hoy,
         )
     lineas.append('')
 
+    filas_revisar = [(c, t) for c, t in filas
+                     if not descripcion_actualizada(t['descripcion'])]
+    lineas.append('## Descripcion sin actualizar (dias >= -10)')
+    lineas.append('')
+    lineas.append('Transacciones con la descripcion sin actualizar (solo un codigo): la')
+    lineas.append('fecha de vencimiento posiblemente no este correcta. Revisalas antes de enviar.')
+    lineas.append('')
+    if filas_revisar:
+        lineas.append('| Cliente | Emision | Vencimiento | Dias | Nota | Descripcion | '
+                      'Monto | Estado | Alerta |')
+        lineas.append('|---|---|---|---|---|---|---|---|---|')
+        for c, t in filas_revisar:
+            estado, _ = estado_transaccion(t['dias'])
+            lineas.append(
+                f'| {c["nombre"]} | {t["emision"]} | {t["vencimiento"]} | {t["dias"]} | '
+                f'{t["doc"]} | {t["descripcion"]} | {fmt_monto(t["monto"])} | '
+                f'{estado_md(estado)} | {alerta_transaccion(t)} |'
+            )
+    else:
+        lineas.append('No hay transacciones pendientes de revisar.')
+    lineas.append('')
+
     lineas.append('## Mensajes para clientes (dias >= -10)')
     lineas.append('')
     lineas.append('Bloques listos para copiar. Los marcados con **REVISAR** tienen la')
@@ -382,10 +404,11 @@ def _escribir_excel(ruta_xlsx, clientes):
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
 
-    encabezados = ['Cliente', 'RIF', 'Vencimiento', 'Dias', 'Nota', 'Descripcion',
-                   'Desc. Actualizada', 'Monto', 'Estado', 'Alerta']
+    encabezados_detalle = ['Cliente', 'RIF', 'Vencimiento', 'Dias', 'Nota', 'Descripcion',
+                           'Desc. Actualizada', 'Monto', 'Estado', 'Alerta']
+    anchos_detalle = [38, 14, 12, 7, 11, 42, 15, 12, 11, 46]
 
-    def hoja_detalle(ws, filas):
+    def hoja_detalle(ws, filas, encabezados, anchos):
         for col, h in enumerate(encabezados, 1):
             cel = ws.cell(1, col, h)
             cel.font = Font(bold=True, color='FFFFFF')
@@ -398,7 +421,6 @@ def _escribir_excel(ruta_xlsx, clientes):
                     cel.number_format = '#,##0.00'
         ws.freeze_panes = 'A2'
         ws.auto_filter.ref = f'A1:{get_column_letter(len(encabezados))}{len(filas) + 1}'
-        anchos = [38, 14, 12, 7, 11, 42, 15, 12, 11, 46]
         for i, a in enumerate(anchos, 1):
             ws.column_dimensions[get_column_letter(i)].width = a
 
@@ -415,13 +437,30 @@ def _escribir_excel(ruta_xlsx, clientes):
             ])
     ws1 = wb.active
     ws1.title = 'Detalle'
-    hoja_detalle(ws1, filas_todas)
+    hoja_detalle(ws1, filas_todas, encabezados_detalle, anchos_detalle)
 
     filas_filtro = [f for f in filas_todas
                     if isinstance(f[3], int) and f[3] >= -10]
     filas_filtro.sort(key=lambda f: f[3], reverse=True)
     ws2 = wb.create_sheet('>= -10')
-    hoja_detalle(ws2, filas_filtro)
+    hoja_detalle(ws2, filas_filtro, encabezados_detalle, anchos_detalle)
+
+    encabezados_revisar = ['Cliente', 'Emision', 'Vencimiento', 'Dias', 'Nota',
+                           'Descripcion', 'Monto', 'Estado', 'Alerta']
+    anchos_revisar = [38, 12, 12, 7, 11, 42, 12, 11, 46]
+    filas_revisar = []
+    for c in clientes:
+        for t in c['transacciones']:
+            if (t['dias'] is not None and t['dias'] >= -10
+                    and not descripcion_actualizada(t['descripcion'])):
+                estado, _ = estado_transaccion(t['dias'])
+                filas_revisar.append([
+                    c['nombre'], t['emision'], t['vencimiento'], t['dias'], t['doc'],
+                    t['descripcion'], t['monto'], estado, alerta_transaccion(t),
+                ])
+    filas_revisar.sort(key=lambda f: f[3], reverse=True)
+    ws3 = wb.create_sheet('Desc. sin act. (>= -10)')
+    hoja_detalle(ws3, filas_revisar, encabezados_revisar, anchos_revisar)
 
     wb.save(ruta_xlsx)
     return ruta_xlsx
@@ -481,8 +520,9 @@ def mostrar_consola(clientes, pdf_path):
         for t in c['transacciones']:
             estado, msg = estado_transaccion(t['dias'])
             alerta = alerta_transaccion(t)
-            print(f'  Vence: {t["vencimiento"]}  Dias: {t["dias"]}  '
-                  f'Nota: {t["doc"]}  Monto: {consola.negrita(fmt_monto(t["monto"]))}  '
+            print(f'  Emision: {t["emision"]}  Vence: {t["vencimiento"]}  '
+                  f'Dias: {t["dias"]}  Nota: {t["doc"]}  '
+                  f'Monto: {consola.negrita(fmt_monto(t["monto"]))}  '
                   f'{_pintar_estado(estado)}')
             print(f'    Descripcion: {t["descripcion"]}')
             if not descripcion_actualizada(t['descripcion']):
@@ -505,6 +545,23 @@ def mostrar_consola(clientes, pdf_path):
         print(f'  {c["nombre"][:38]:<38}  Vence {t["vencimiento"]}  '
               f'Dias {t["dias"]:>4}  Nota {t["doc"]}  '
               f'{monto_mostrar}  {_pintar_estado(estado)}')
+    print()
+
+    print('=' * 78)
+    print('  ' + consola.amarillo(consola.negrita(
+        'DESCRIPCION SIN ACTUALIZAR (DIAS >= -10)')))
+    print('=' * 78)
+    filas_revisar = [(c, t) for c, t in filas
+                     if not descripcion_actualizada(t['descripcion'])]
+    if not filas_revisar:
+        print('  No hay transacciones pendientes de revisar.')
+    else:
+        for c, t in filas_revisar:
+            estado, _ = estado_transaccion(t['dias'])
+            print(f'  {c["nombre"][:34]:<34}  Emision {t["emision"]}  '
+                  f'Vence {t["vencimiento"]}  Dias {t["dias"]:>4}  '
+                  f'Nota {t["doc"]}  {fmt_monto(t["monto"]):>10}  '
+                  f'{_pintar_estado(estado)}')
     print()
 
 
