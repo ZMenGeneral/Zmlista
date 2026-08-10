@@ -610,6 +610,10 @@ def _main_lista():
                               autoborder=True)
         print(consola.verde(f'  OK: {total_parse} lineas -> {len(rows)} productos '
                             f'(se quitaron {removed} con existencia 0) -> {out}'))
+        fila_inicio = 13
+        fila_fin = fila_inicio + len(rows) - 1
+        print(consola.verde(f'  Filas de items: desde la fila {fila_inicio} '
+                            f'hasta la fila {fila_fin} ({len(rows)} filas)'))
         total += len(rows)
 
     print('-' * 60)
