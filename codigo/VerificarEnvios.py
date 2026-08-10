@@ -174,9 +174,54 @@ def formatear_resumen(guia, data):
     return lineas
 
 
+def extraer_datos_guia(guia, data):
+    """Extrae los datos importantes de la respuesta de ZOOM para guardarlos."""
+    ent = (data or {}).get('entidadRespuesta') or {}
+    iz = ent.get('infoZoom') or {}
+    track = ent.get('tracking') or []
+
+    if not iz:
+        return {'guia': guia, 'estado': 'GUIA NO ENCONTRADA EN LA BASE DE DATOS'}
+
+    entrega = None
+    for t in track:
+        nom = ((t.get('estatus') or {}).get('nombre') or '').upper()
+        if nom in ENTREGADAS or (t.get('receptor') or '').strip():
+            entrega = t
+            break
+
+    eventos = []
+    for t in track[:4]:
+        eventos.append({
+            'fecha': _fecha_corta(t.get('fechahorareal')),
+            'nombre': ((t.get('estatus') or {}).get('nombre') or ''),
+            'oficina': ((t.get('oficina') or {}).get('nombre') or ''),
+            'receptor': (t.get('receptor') or '').strip(),
+        })
+
+    return {
+        'guia': guia,
+        'estado': (iz.get('descripcion_estatus') or 'SIN ESTADO'),
+        'fecha_envio': (iz.get('fecha') or ''),
+        'origen': ((iz.get('origen') or {}).get('nombre') or ''),
+        'destino': ((iz.get('destino') or {}).get('nombre') or ''),
+        'servicio': (iz.get('nombreservicio') or ''),
+        'peso': (iz.get('peso') or ''),
+        'piezas': (iz.get('nropiezas') or ''),
+        'casillero': (iz.get('codcasillero') or ''),
+        'retirada': entrega is not None,
+        'fecha_entrega': _fecha_corta(entrega.get('fechahorareal')) if entrega else '',
+        'receptor': (entrega.get('receptor') or '').strip() if entrega else '',
+        'registrado_por': ((entrega.get('usuario') or {}).get('nombre') or '').strip() if entrega else '',
+        'oficina': ((entrega.get('oficina') or {}).get('nombre') or '').strip() if entrega else '',
+        'eventos': eventos,
+    }
+
+
 def verificar_guias(guias):
     ok = 0
     error = 0
+    guardadas = 0
     for i, guia in enumerate(guias, 1):
         print(f'\n  [{i}/{len(guias)}] Consultando guia {guia} ...')
         try:
@@ -189,6 +234,13 @@ def verificar_guias(guias):
             for linea in formatear_resumen(guia, data):
                 print(linea)
             ok += 1
+
+            try:
+                from supabase_client import upsert_guia
+                upsert_guia(extraer_datos_guia(guia, data))
+                guardadas += 1
+            except Exception as e:
+                print(consola.amarillo(f'  (No se pudo guardar en Supabase: {e})'))
         except Exception as e:
             print(f'  ERROR: {e}')
             error += 1
@@ -197,6 +249,8 @@ def verificar_guias(guias):
     print('=' * 58)
     print(consola.cian(consola.negrita(
         f'  RESUMEN: {ok} verificadas, {error} con error, total {len(guias)}')))
+    if guardadas:
+        print(consola.verde(f'  Guias guardadas en Supabase: {guardadas}'))
     print('=' * 58)
 
 
