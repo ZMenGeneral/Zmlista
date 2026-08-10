@@ -41,7 +41,7 @@ import re
 import sys
 import zipfile
 import xml.etree.ElementTree as ET
-from datetime import date
+from datetime import datetime, date
 from xml.sax.saxutils import escape
 
 import consola
@@ -61,6 +61,7 @@ CARPETA_CODIGO = os.path.dirname(os.path.abspath(__file__))
 CARPETA_PROYECTO = os.path.dirname(CARPETA_CODIGO)
 CARPETA_PLANTILLAS = os.path.join(CARPETA_PROYECTO, 'plantillas')
 CARPETA_SALIDAS = os.path.join(CARPETA_PROYECTO, 'salidas')
+LOG_FILAS = os.path.join(CARPETA_PROYECTO, 'Registro Filas de Items.txt')
 
 
 def parse_number(value):
@@ -612,8 +613,17 @@ def _main_lista():
                             f'(se quitaron {removed} con existencia 0) -> {out}'))
         fila_inicio = 13
         fila_fin = fila_inicio + len(rows) - 1
-        print(consola.verde(f'  Filas de items: desde la fila {fila_inicio} '
-                            f'hasta la fila {fila_fin} ({len(rows)} filas)'))
+        print()
+        print('=' * 60)
+        print(consola.naranja(f'  Filas de items: desde la fila {fila_inicio} '
+                              f'hasta la fila {fila_fin} ({len(rows)} filas)'))
+        print('=' * 60)
+        print()
+        linea_log = (f'[{datetime.now().strftime("%d/%m/%Y %H:%M:%S")}] '
+                     f'Filas de items: desde la fila {fila_inicio} '
+                     f'hasta la fila {fila_fin} ({len(rows)} filas)')
+        with open(LOG_FILAS, 'a', encoding='utf-8') as f:
+            f.write(linea_log + '\n')
         total += len(rows)
 
     print('-' * 60)

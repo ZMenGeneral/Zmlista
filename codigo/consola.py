@@ -31,6 +31,7 @@ ROJO_B = '\033[1;91m'
 VERDE_B = '\033[1;92m'
 AMARILLO_B = '\033[1;93m'
 CIAN_B = '\033[1;96m'
+NARANJA = '\033[38;5;208m'
 
 
 def color(texto, *codigos):
@@ -51,6 +52,10 @@ def verde(texto):
 
 def amarillo(texto):
     return color(texto, AMARILLO_B)
+
+
+def naranja(texto):
+    return color(texto, NARANJA)
 
 
 def cian(texto):
