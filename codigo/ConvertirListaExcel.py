@@ -35,6 +35,7 @@ Comportamiento opcion 2:
     - Actualiza la fecha (B10) y el mensaje "COMPRAS A PARTIR DE: X Bs"
       con X = 450 x Z
 """
+import copy
 import os
 import re
 import sys
@@ -175,10 +176,12 @@ def _prepare_shared_strings(ss_data, reemplazos, valores):
     return _xml_bytes(sst), indice_por_valor
 
 
-def _fill_sheet(sheet_data, filas, string_idx, specs):
+def _fill_sheet(sheet_data, filas, string_idx, specs, borde_mapa=None):
     """Rellena las celdas de la hoja.
     filas = lista de dicts por producto.
-    specs = lista de (num_columna, clave, tipo) con tipo 's' (texto) o 'n' (numero)."""
+    specs = lista de (num_columna, clave, tipo) con tipo 's' (texto) o 'n' (numero).
+    borde_mapa = dict {num_columna: estilo_con_borde}. Si se pasa, las celdas
+                 con valor quedan con borde y las vacias se eliminan (sin borde)."""
     root = ET.fromstring(sheet_data)
     sheet_data_el = root.find(f'{{{NS}}}sheetData')
 
@@ -237,11 +240,107 @@ def _fill_sheet(sheet_data, filas, string_idx, specs):
             letra = chr(ord('A') + col_num - 1)
             poner_valor(obtener_celda(row_el, f'{letra}{num}', col_num), valor, tipo == 's')
 
+    if borde_mapa is not None:
+        variante, fallback = borde_mapa
+        for row_el in filas_por_numero.values():
+            if int(row_el.get('r')) < 13:
+                continue
+            # columna -> (celda, tiene_valor)
+            celdas = {}
+            for cell in list(row_el):
+                if _localname(cell.tag) != 'c':
+                    continue
+                col = _col_num(cell.get('r'))
+                if 2 <= col <= 7:
+                    v = cell.find(f'{{{NS}}}v')
+                    celdas[col] = (cell, v is not None and (v.text or '').strip() != '')
+            # marco a la derecha: F con dato -> G; C con dato -> D
+            conservar = set(col for col, (cell, tiene) in celdas.items() if tiene)
+            if 6 in celdas and celdas[6][1]:
+                conservar.add(7)
+            if 3 in celdas and celdas[3][1]:
+                conservar.add(4)
+            for col, (cell, tiene) in celdas.items():
+                s_attr = cell.get('s')
+                if tiene:
+                    if s_attr is None:
+                        if col in fallback:
+                            cell.set('s', str(fallback[col]))
+                    else:
+                        s_idx = int(s_attr)
+                        if s_idx in variante:
+                            cell.set('s', str(variante[s_idx]))
+                else:
+                    if col not in conservar:
+                        row_el.remove(cell)
+                    elif s_attr is None and col in fallback:
+                        cell.set('s', str(fallback[col]))
+
     return _xml_bytes(root)
 
 
-def build_from_base(rows, base_path, out_path, reemplazos, specs):
-    """Rellena la plantilla base con los productos y guarda out_path."""
+def _agregar_estilo(cellxfs, base_xf, border_id):
+    """Copia un xf con un borderId nuevo, lo agrega a cellXfs y devuelve su indice."""
+    nuevo = copy.deepcopy(base_xf)
+    nuevo.set('borderId', str(border_id))
+    nuevo.set('applyBorder', '1')
+    cellxfs.append(nuevo)
+    total = sum(1 for _ in cellxfs)
+    cellxfs.set('count', str(total))
+    return total - 1
+
+
+def _estilos_borde(sheet_data, styles_data):
+    """Devuelve (styles_bytes, (variante, fallback)) para bordes automaticos.
+    variante: {estilo_original: estilo_con_borde} para estilos de celdas de datos
+    (B..G) que no tienen borde.
+    fallback: {columna: estilo_con_borde} para celdas sin estilo (filas fuera del
+    rango estilizado de la plantilla)."""
+    root = ET.fromstring(sheet_data)
+    estilos_por_col = {}
+    primer_estilo = {}
+    for row_el in root.iter(f'{{{NS}}}row'):
+        if int(row_el.get('r')) < 14:
+            continue
+        for cell in row_el:
+            if _localname(cell.tag) != 'c':
+                continue
+            col = _col_num(cell.get('r'))
+            if 2 <= col <= 7:
+                s = int(cell.get('s', '0'))
+                estilos_por_col.setdefault(col, set()).add(s)
+                primer_estilo.setdefault(col, s)
+
+    sroot = ET.fromstring(styles_data)
+    cellxfs = None
+    for el in sroot:
+        if _localname(el.tag) == 'cellXfs':
+            cellxfs = el
+            break
+    xfs = [xf for xf in cellxfs]
+
+    variante = {}
+    for col in range(2, 8):
+        for s in estilos_por_col.get(col, ()):
+            if int(xfs[s].get('borderId', '0')) == 0 and s not in variante:
+                variante[s] = _agregar_estilo(cellxfs, xfs[s], 1)
+
+    fallback = {}
+    for col in range(2, 8):
+        base = primer_estilo.get(col)
+        if base is None:
+            continue
+        if int(xfs[base].get('borderId', '0')) == 0:
+            fallback[col] = variante.get(base) or _agregar_estilo(cellxfs, xfs[base], 1)
+        else:
+            fallback[col] = base
+
+    return _xml_bytes(sroot), (variante, fallback)
+
+
+def build_from_base(rows, base_path, out_path, reemplazos, specs, autoborder=False):
+    """Rellena la plantilla base con los productos y guarda out_path.
+    autoborder=True deja los bordes solo en las celdas que tienen datos."""
     valores = []
     for r in rows:
         for _, clave, tipo in specs:
@@ -252,9 +351,14 @@ def build_from_base(rows, base_path, out_path, reemplazos, specs):
                 valores.append(v)
 
     z = zipfile.ZipFile(base_path)
+    sheet_data = z.read('xl/worksheets/sheet1.xml')
     ss_bytes, string_idx = _prepare_shared_strings(
         z.read('xl/sharedStrings.xml'), reemplazos, valores)
-    sheet_bytes = _fill_sheet(z.read('xl/worksheets/sheet1.xml'), rows, string_idx, specs)
+    styles_data = z.read('xl/styles.xml')
+    borde_mapa = None
+    if autoborder:
+        styles_data, borde_mapa = _estilos_borde(sheet_data, styles_data)
+    sheet_bytes = _fill_sheet(sheet_data, rows, string_idx, specs, borde_mapa)
 
     i = 0
     while True:
@@ -267,6 +371,8 @@ def build_from_base(rows, base_path, out_path, reemplazos, specs):
                         data = ss_bytes
                     elif item.filename == 'xl/worksheets/sheet1.xml':
                         data = sheet_bytes
+                    elif item.filename == 'xl/styles.xml':
+                        data = styles_data
                     z2.writestr(item, data)
             return destino
         except PermissionError:
@@ -436,7 +542,7 @@ def main_lista_bs():
     nombre = 'Lista Zm Bs ' + date.today().strftime('%d-%m-%Y') + '.xlsx'
     os.makedirs(CARPETA_SALIDAS, exist_ok=True)
     out = os.path.join(CARPETA_SALIDAS, nombre)
-    out = build_from_base(rows, base_path, out, reemplazos, specs)
+    out = build_from_base(rows, base_path, out, reemplazos, specs, autoborder=True)
 
     print('-' * 60)
     print(consola.verde(f'  OK: {len(rows)} productos x {z} -> {out}'))
@@ -444,12 +550,8 @@ def main_lista_bs():
     consola.separador()
 
 
-def main():
+def _main_lista():
     args = sys.argv[1:]
-
-    if args and args[0] == '--bs':
-        main_lista_bs()
-        return
 
     consola.titulo('OPCION 1 - LISTA DE PRECIOS (TXT -> EXCEL)')
 
@@ -504,7 +606,8 @@ def main():
         else:
             out = os.path.join(CARPETA_SALIDAS, nombre)
 
-        out = build_from_base(rows, base_path, out, reemplazos, specs)
+        out = build_from_base(rows, base_path, out, reemplazos, specs,
+                              autoborder=True)
         print(consola.verde(f'  OK: {total_parse} lineas -> {len(rows)} productos '
                             f'(se quitaron {removed} con existencia 0) -> {out}'))
         total += len(rows)
@@ -512,6 +615,16 @@ def main():
     print('-' * 60)
     print(consola.cian(consola.negrita(f'  Total productos convertidos: {total}')))
     consola.separador()
+
+
+def main():
+    args = sys.argv[1:]
+
+    if args and args[0] == '--bs':
+        main_lista_bs()
+        return
+
+    _main_lista()
 
 
 if __name__ == '__main__':
