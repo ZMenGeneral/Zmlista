@@ -4,6 +4,8 @@ CompararVentas.py
 OPCION 8 - NO VENDIDOS: compara ventas contra un pedido y lo guarda en Supabase:
     Lee uno o varios PDFs de VENTAS (los vendidos), cada uno asociado a un CLIENTE
     (nombre detectado del PDF o confirmado por el usuario), y un PEDIDO (PDF o Excel).
+    El pedido tambien puede agregarse a mano (A): nombre del producto (en MAYUSCULAS)
+    y cantidad; al terminar se guarda y se sube a Supabase.
 
     Para cada cliente calcula:
         No vendido = Pedido - Vendido  (minimo 0)
@@ -98,7 +100,8 @@ def _agrupar_lineas(words):
 
 
 def _norm(t):
-    return t.upper().replace('Ó', 'O').replace('Í', 'I').replace('Á', 'A').strip()
+    return t.upper().replace('Ó', 'O').replace('Í', 'I').replace('Á', 'A') \
+             .replace('\ufffd', '').strip()
 
 
 PALABRAS_GENERICAS = ('VENTA', 'VENTAS', 'FACTURA', 'NOTA', 'REPORTE', 'LISTA',
@@ -180,16 +183,16 @@ def extraer_items_pdf(path):
             for ln in _agrupar_lineas(pag.extract_words()):
                 texto = ' '.join(w['text'] for w in ln['words'])
                 u = _norm(texto)
-                if codigo_x is None and 'CODIGO' in u:
+                if codigo_x is None:
                     for w in ln['words']:
                         t = _norm(w['text'])
-                        if 'CODIGO' in t:
+                        if t in ('CODIGO', 'CDIGO'):
                             codigo_x = w['x0']
                         elif t in ('CANT', 'CANTIDAD', 'UNID', 'UNIDADES', 'QTY'):
                             cant_x = w['x0']
                     if codigo_x is not None:
                         con_encabezado = True
-                    continue
+                        continue
                 if 'TOTAL' in u or 'PAGINA' in u:
                     continue
 
@@ -199,13 +202,15 @@ def extraer_items_pdf(path):
                                      sorted(code_words, key=lambda w: w['x0'])).strip()
                     if not codigo or not any(ch.isalnum() for ch in codigo):
                         continue
+                    if not any(ch.isdigit() for ch in codigo):
+                        continue
                     cant = None
                     if cant_x is not None:
-                        cant_words = [w for w in ln['words'] if abs(w['x0'] - cant_x) < 12]
-                        if cant_words:
-                            txt = ''.join(w['text'] for w in
-                                          sorted(cant_words, key=lambda w: w['x0']))
-                            cant = parse_number(txt)
+                        candidatos = [(abs(w['x0'] - cant_x), w) for w in ln['words']
+                                      if parse_number(w['text']) is not None]
+                        if candidatos:
+                            _, w_min = min(candidatos, key=lambda t: t[0])
+                            cant = parse_number(w_min['text'])
                     if cant is None:
                         nums = [parse_number(w['text']) for w in ln['words']
                                 if parse_number(w['text']) is not None]
@@ -224,6 +229,8 @@ def extraer_items_pdf(path):
                     if prim is nums[-1] or not prim['text'][0].isalpha():
                         continue
                     codigo = prim['text'].strip()
+                    if not any(ch.isdigit() for ch in codigo):
+                        continue
                     items.append({'codigo': codigo, 'desc': '', 'cant': cant})
     return items, con_encabezado
 
@@ -282,6 +289,50 @@ def seleccionar_pdfs_ventas():
         if mas not in ('s', 'si', 'y', 'yes'):
             break
     return pdfs
+
+
+def _fmt_cant(n):
+    """5.0 -> '5', 5.5 -> '5.5'."""
+    try:
+        if n == int(n):
+            return str(int(n))
+    except (TypeError, ValueError):
+        pass
+    return str(n)
+
+
+def agregar_pedido_manual():
+    """Permite introducir a mano el PEDIDO: NOMBRE DEL PRODUCTO y CANTIDAD.
+    El nombre se guarda siempre en MAYUSCULAS.
+    Acepta 'NOMBRE CANTIDAD' en una sola linea (ej: FARO DELANTERO 4)
+    o nombre y cantidad por separado.
+    Devuelve lista de items {'codigo': nombre, 'cant': cantidad}."""
+    items = {}
+    print()
+    print('  PEDIDO MANUAL: escribe el NOMBRE del producto y la cantidad.')
+    print('  En una sola linea:   FARO DELANTERO 4')
+    print('  (No importa si es mayuscula o minuscula; se guarda en MAYUSCULAS)')
+    while True:
+        entrada = input('  Producto y cantidad (Enter para terminar): ').strip()
+        if not entrada:
+            break
+        partes = entrada.split()
+        cantidad = parse_number(partes[-1]) if partes else None
+        if len(partes) >= 2 and cantidad is not None and cantidad > 0:
+            nombre = ' '.join(partes[:-1]).upper()
+        else:
+            nombre = entrada.upper()
+            cant = input('  Cantidad: ').strip()
+            cantidad = parse_number(cant)
+        if not nombre:
+            continue
+        if cantidad is None or cantidad <= 0:
+            print('    Cantidad invalida. Intenta de nuevo.')
+            continue
+        it = items.setdefault(nombre, {'codigo': nombre, 'cant': 0})
+        it['cant'] += cantidad
+        print(f'    Agregado: {nombre} = {_fmt_cant(cantidad)}')
+    return list(items.values())
 
 
 def calcular_no_vendidos(sold, pedido):
@@ -433,36 +484,16 @@ def main():
     if len(args) >= 2:
         cliente = input('  Nombre del cliente de este PDF de ventas: ').strip() or 'Cliente 1'
         pdfs = [(args[0], cliente)]
-        pedido_path = args[1]
     else:
         pdfs = seleccionar_pdfs_ventas()
         if not pdfs:
             print('  No seleccionaste ningun PDF de ventas. Cancelado.')
-            return
-        pedido_path = ask_pedido_dialog()
-        if not pedido_path:
-            print('  No seleccionaste el pedido. Cancelado.')
             return
 
     for p, _ in pdfs:
         if not os.path.exists(p):
             print(f'  No se encontro el archivo: {p}')
             return
-    if not os.path.exists(pedido_path):
-        print(f'  No se encontro el archivo: {pedido_path}')
-        return
-
-    try:
-        ped_items, tipo_ped = cargar_items(pedido_path)
-    except Exception as e:
-        print(f'  Error al leer el pedido: {e}')
-        return
-    if not ped_items:
-        print('  El pedido no tiene items. Cancelado.')
-        return
-    pedido = {it['codigo']: it for it in ped_items}
-    print(f'  PEDIDO {os.path.basename(pedido_path)} ({tipo_ped}): '
-          f'{len(ped_items)} items leidos.')
 
     sold_total = {}
     por_cliente = {}
@@ -479,6 +510,47 @@ def main():
             sold_total[cod] = sold_total.get(cod, 0) + it['cant']
         print(f'  VENTAS {os.path.basename(path)} (Cliente: {cliente}): '
               f'{len(items)} items leidos.')
+        for it in sorted(items, key=lambda x: x['codigo']):
+            print(f'      {it["codigo"]:<22} = {_fmt_cant(it["cant"])}')
+
+    print()
+    print('  PEDIDO (las cosas que se pidieron)')
+    if len(args) >= 2:
+        modo = 'b'
+    else:
+        modo = input('  Agregar pedido a mano [A] o por documento [B]? [A/B]: ').strip().lower()
+    if modo in ('a', 'mano', 'manual'):
+        ped_items = agregar_pedido_manual()
+        tipo_ped = 'MANUAL'
+        pedido_path = None
+        if not ped_items:
+            print('  El pedido manual esta vacio. Cancelado.')
+            return
+    else:
+        if len(args) >= 2:
+            pedido_path = args[1]
+        else:
+            pedido_path = ask_pedido_dialog()
+            if not pedido_path:
+                print('  No seleccionaste el pedido. Cancelado.')
+                return
+        if not os.path.exists(pedido_path):
+            print(f'  No se encontro el archivo: {pedido_path}')
+            return
+        try:
+            ped_items, tipo_ped = cargar_items(pedido_path)
+        except Exception as e:
+            print(f'  Error al leer el pedido: {e}')
+            return
+    if not ped_items:
+        print('  El pedido no tiene items. Cancelado.')
+        return
+    pedido = {it['codigo']: it for it in ped_items}
+    if pedido_path:
+        print(f'  PEDIDO {os.path.basename(pedido_path)} ({tipo_ped}): '
+              f'{len(ped_items)} items leidos.')
+    else:
+        print(f'  PEDIDO MANUAL ({tipo_ped}): {len(ped_items)} items.')
 
     resultado = calcular_no_vendidos(sold_total, pedido)
     no_vendidos = [r for r in resultado if r['no_vendido'] > 0]
