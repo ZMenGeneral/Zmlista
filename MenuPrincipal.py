@@ -8,7 +8,10 @@ Menu tipo do-while con 6 opciones.
     Opcion 4: Guias ZOOM almacenadas en Supabase (confirmar fechas cambiadas)
     Opcion 5: Analizar cobranza (PDF de CUENTAS POR COBRAR)
     Opcion 6: Mensajes rapidos para descripciones de cobranza
-    Opcion 7: Salir / cerrar el programa
+    Opcion 7: Comparar 2 Excel por codigo y mayor cantidad (temporal)
+    Opcion 8: No vendidos (ventas PDF vs pedido)
+    Opcion 9: No vendidos: historial por mes (Supabase)
+    Opcion 10: Salir / cerrar el programa
 """
 import os
 import sys
@@ -22,6 +25,8 @@ import VerificarEnvios as verificador
 import GuiasZoom as guias
 import AnalizarCobranza as analizador
 import MensajesRapidos as mensajes
+import CompararListas as comparador
+import CompararVentas as novendidos
 import consola
 
 
@@ -45,7 +50,10 @@ def mostrar_menu():
     print('  4. Guias ZOOM almacenadas')
     print('  5. Analizar cobranza (PDF)')
     print('  6. Mensajes rapidos')
-    print('  7. Salir')
+    print('  7. Comparar 2 Excel por codigo (temporal)')
+    print('  8. No vendidos (ventas vs pedido)')
+    print('  9. No vendidos: historial por mes')
+    print('  10. Salir')
     print('=' * 52)
     print()
 
@@ -80,6 +88,18 @@ def main():
             mensajes.main()
             preguntar('\n  Presiona Enter para volver al menu...')
         elif opcion == '7':
+            consola.limpiar()
+            comparador.main()
+            preguntar('\n  Presiona Enter para volver al menu...')
+        elif opcion == '8':
+            consola.limpiar()
+            novendidos.main()
+            preguntar('\n  Presiona Enter para volver al menu...')
+        elif opcion == '9':
+            consola.limpiar()
+            novendidos.consultar_historial()
+            preguntar('\n  Presiona Enter para volver al menu...')
+        elif opcion == '10':
             print()
             print('  Cerrando programa. Hasta luego!')
             break

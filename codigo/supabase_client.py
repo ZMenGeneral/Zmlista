@@ -4,7 +4,9 @@ supabase_client.py
 Cliente minimo para Supabase (PostgREST) usando solo urllib de la libreria
 estandar. Lee las credenciales de config/supabase.json (NO se suben a git).
 
-Tabla usada: public.guias_zoom
+Tablas usadas:
+    - public.guias_zoom  (guias de ZOOM)
+    - public.no_vendidos (historial de no vendidos por mes y cliente)
 """
 import json
 import os
@@ -79,3 +81,31 @@ def marcar_cambiadas(guias, valor):
     _request('PATCH', 'guias_zoom', f'?guia=in.({lista})',
              cuerpo={'fecha_cambiada': bool(valor)}, prefer='return=minimal')
     return len(guias)
+
+
+def upsert_no_vendido(datos):
+    """Inserta o actualiza un registro de NO VENDIDO usando
+    (mes, cliente, codigo) como clave unica."""
+    datos = dict(datos)
+    datos['actualizado_en'] = datetime.now(timezone.utc).isoformat()
+    return _request('POST', 'no_vendidos', '?on_conflict=mes,cliente,codigo',
+                    cuerpo=datos, prefer='resolution=merge-duplicates,return=minimal')
+
+
+def listar_no_vendidos_mes(mes):
+    """Devuelve los registros de NO VENDIDOS de un mes (YYYY-MM)."""
+    return _request('GET', 'no_vendidos',
+                    f'?select=*&mes=eq.{mes}&order=cliente.asc,codigo.asc') or []
+
+
+def listar_meses_no_vendidos():
+    """Devuelve los meses que tienen registros de NO VENDIDOS, mas reciente primero."""
+    filas = _request('GET', 'no_vendidos', '?select=mes&order=mes.desc') or []
+    meses = []
+    vistos = set()
+    for f in filas:
+        m = f.get('mes')
+        if m and m not in vistos:
+            vistos.add(m)
+            meses.append(m)
+    return meses
