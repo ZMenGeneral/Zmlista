@@ -12,6 +12,9 @@ Menu tipo do-while con 6 opciones.
     Opcion 8: No vendidos (ventas PDF vs pedido)
     Opcion 9: No vendidos: historial por mes (Supabase)
     Opcion 10: Salir / cerrar el programa
+
+Al iniciar revisa GitHub automaticamente: si hay actualizaciones,
+descarga la version nueva y reinicia el programa.
 """
 import os
 import sys
@@ -37,6 +40,37 @@ def preguntar(texto):
         return '5'
 
 
+def actualizar_desde_github():
+    """Si hay commits nuevos en GitHub, hace pull y reinicia el programa."""
+    import subprocess
+    try:
+        git = subprocess.run(['git', 'fetch', 'origin', 'main'],
+                             capture_output=True, cwd=RAIZ, timeout=30)
+        if git.returncode != 0:
+            return
+        atras = subprocess.run(['git', 'rev-list', '--count', 'HEAD..origin/main'],
+                               capture_output=True, text=True, cwd=RAIZ, timeout=30)
+        n = int((atras.stdout or '0').strip() or '0')
+        if n <= 0:
+            return
+        print()
+        print(f'  Hay {n} actualizacion(es) en GitHub. Actualizando el programa...')
+        pull = subprocess.run(['git', 'pull', '--ff-only', 'origin', 'main'],
+                              capture_output=True, text=True, cwd=RAIZ, timeout=120)
+        if pull.returncode == 0:
+            print('  Programa actualizado. Reiniciando...')
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        else:
+            msg = (pull.stderr or pull.stdout or '').strip()
+            print('  No se pudo actualizar automaticamente.')
+            print('  Guarda tus cambios locales (haz commit) y abre el menu de nuevo.')
+            print('  Detalle: ' + msg[:250])
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        print(f'  (No se pudieron revisar actualizaciones: {e})')
+
+
 def mostrar_menu():
     consola.limpiar()
     print()
@@ -59,6 +93,7 @@ def mostrar_menu():
 
 
 def main():
+    actualizar_desde_github()
     while True:
         mostrar_menu()
         opcion = preguntar('  Selecciona una opcion: ').strip()
