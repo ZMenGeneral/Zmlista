@@ -176,6 +176,21 @@ def main():
             consola.limpiar()
             novendidos.consultar_historial()
             preguntar('\n  Presiona Enter para volver al menu...')
+        elif opcion == '55585':
+            consola.limpiar()
+            print()
+            print('  Iniciando bot de descargas (Instagram/TikTok/YouTube)...')
+            print('  Ctrl+C para volver al menu.')
+            print()
+            try:
+                import bot_telegram as bot_descargas
+                bot_descargas.main()
+            except KeyboardInterrupt:
+                print()
+                print('  Bot detenido.')
+            except SystemExit as e:
+                print(f'  El bot no pudo iniciar: {e}')
+            preguntar('\n  Presiona Enter para volver al menu...')
         elif opcion == '10':
             print()
             print('  Cerrando programa. Hasta luego!')

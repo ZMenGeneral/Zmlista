@@ -9,6 +9,4 @@ if not defined PYEXE (
     pause
     exit /b 1
 )
-"%PYEXE%" "%~dp0MenuPrincipal.py" %*
-echo.
-pause
+start "Zmlista Menu" "%PYEXE%" "%~dp0MenuPrincipal.py" %*
