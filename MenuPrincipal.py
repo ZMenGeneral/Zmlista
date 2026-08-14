@@ -40,12 +40,51 @@ def preguntar(texto):
         return '5'
 
 
+def _animar_carga(msj, fn):
+    """Ejecuta fn() en un hilo y muestra una barra de carga animada
+    (estilo descarga de Linux) mientras trabaja. Devuelve el resultado de fn."""
+    import threading
+    import time
+
+    resultado = {}
+
+    def trabajo():
+        try:
+            resultado['valor'] = fn()
+        except Exception as e:
+            resultado['error'] = e
+
+    h = threading.Thread(target=trabajo, daemon=True)
+    h.start()
+    ancho = 40
+    pos = 0
+    hacia = 1
+    while h.is_alive():
+        barra = '#' * pos + ' ' * (ancho - pos)
+        sys.stdout.write('\r  %s [%s]' % (msj, barra))
+        sys.stdout.flush()
+        pos += hacia
+        if pos >= ancho:
+            hacia = -1
+        elif pos <= 0:
+            hacia = 1
+        time.sleep(0.06)
+    h.join()
+    sys.stdout.write('\r' + ' ' * (len(msj) + ancho + 5) + '\r')
+    sys.stdout.flush()
+    if 'error' in resultado:
+        raise resultado['error']
+    return resultado.get('valor')
+
+
 def actualizar_desde_github():
     """Si hay commits nuevos en GitHub, hace pull y reinicia el programa."""
     import subprocess
     try:
-        git = subprocess.run(['git', 'fetch', 'origin', 'main'],
-                             capture_output=True, cwd=RAIZ, timeout=30)
+        def _fetch():
+            return subprocess.run(['git', 'fetch', 'origin', 'main'],
+                                  capture_output=True, cwd=RAIZ, timeout=30)
+        git = _animar_carga('Inicializando menu', _fetch)
         if git.returncode != 0:
             return
         atras = subprocess.run(['git', 'rev-list', '--count', 'HEAD..origin/main'],
@@ -55,13 +94,16 @@ def actualizar_desde_github():
             return
         print()
         print(f'  Hay {n} actualizacion(es) en GitHub. Actualizando el programa...')
-        pull = subprocess.run(['git', 'pull', '--ff-only', 'origin', 'main'],
-                              capture_output=True, text=True, cwd=RAIZ, timeout=120)
-        if pull.returncode == 0:
+
+        def _pull():
+            return subprocess.run(['git', 'pull', '--ff-only', 'origin', 'main'],
+                                  capture_output=True, text=True, cwd=RAIZ, timeout=120)
+        res = _animar_carga('Descargando actualizaciones', _pull)
+        if res.returncode == 0:
             print('  Programa actualizado. Reiniciando...')
             os.execv(sys.executable, [sys.executable] + sys.argv)
         else:
-            msg = (pull.stderr or pull.stdout or '').strip()
+            msg = (res.stderr or res.stdout or '').strip()
             print('  No se pudo actualizar automaticamente.')
             print('  Guarda tus cambios locales (haz commit) y abre el menu de nuevo.')
             print('  Detalle: ' + msg[:250])
