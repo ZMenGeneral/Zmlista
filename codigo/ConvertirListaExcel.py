@@ -64,6 +64,30 @@ CARPETA_SALIDAS = os.path.join(CARPETA_PROYECTO, 'salidas')
 LOG_FILAS = os.path.join(CARPETA_PROYECTO, 'Registro Filas de Items.txt')
 
 
+def excel_a_pdf(excel_path):
+    """Convierte un archivo Excel a PDF usando la COM de Excel."""
+    try:
+        import win32com.client
+        import pythoncom
+        pdf_path = os.path.splitext(excel_path)[0] + '.pdf'
+        pythoncom.CoInitialize()
+        xl = win32com.client.DispatchEx('Excel.Application')
+        try:
+            wb = xl.Workbooks.Open(os.path.abspath(excel_path))
+            wb.ExportAsFixedFormat(0, pdf_path)
+            wb.Close(SaveChanges=False)
+            return pdf_path
+        finally:
+            try:
+                xl.Quit()
+            except Exception:
+                pass
+            pythoncom.CoUninitialize()
+    except Exception as e:
+        print(consola.amarillo(f'  (No se pudo generar el PDF: {e})'))
+        return None
+
+
 def parse_number(value):
     """Convierte '218,62' -> 218.62  y  '1.456,00' -> 1456.0. None si no es numero."""
     if not value or not value.strip():
@@ -548,6 +572,14 @@ def main_lista_bs():
     print('-' * 60)
     print(consola.verde(f'  OK: {len(rows)} productos x {z} -> {out}'))
     print(consola.verde(f'  Mensaje: {msg_nuevo}'))
+    pdf = excel_a_pdf(out)
+    if pdf:
+        print(consola.verde(f'  PDF generado: {pdf}'))
+    print()
+    fecha_msg = date.today().strftime('%d-%m-%Y')
+    print(consola.cian(consola.negrita(f'  LISTA DE PRECIOS Bs {fecha_msg}')))
+    print(consola.cian(consola.negrita('  Los precios estan sujetos a cambio sin previo aviso')))
+    print()
     consola.separador()
 
 
@@ -611,6 +643,9 @@ def _main_lista():
                               autoborder=True)
         print(consola.verde(f'  OK: {total_parse} lineas -> {len(rows)} productos '
                             f'(se quitaron {removed} con existencia 0) -> {out}'))
+        pdf = excel_a_pdf(out)
+        if pdf:
+            print(consola.verde(f'  PDF generado: {pdf}'))
         fila_inicio = 13
         fila_fin = fila_inicio + len(rows) - 1
         print()
@@ -618,6 +653,10 @@ def _main_lista():
         print(consola.naranja(f'  Filas de items: desde la fila {fila_inicio} '
                               f'hasta la fila {fila_fin} ({len(rows)} filas)'))
         print('=' * 60)
+        print()
+        fecha_msg = date.today().strftime('%d-%m-%Y')
+        print(consola.cian(consola.negrita(f'  Feliz tarde. Anexo LISTA ZM {fecha_msg}')))
+        print(consola.cian(consola.negrita('  ACTUALIZACION DE INVENTARIO')))
         print()
         linea_log = (f'[{datetime.now().strftime("%d/%m/%Y %H:%M:%S")}] '
                      f'Filas de items: desde la fila {fila_inicio} '
