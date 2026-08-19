@@ -684,7 +684,7 @@ def _main_lista():
             out = os.path.join(CARPETA_SALIDAS, nombre)
 
         out = build_from_base(rows, base_path, out, reemplazos, specs,
-                              autoborder=True)
+                              autoborder=True, formato_bs=True)
         print(consola.verde(f'  OK: {total_parse} lineas -> {len(rows)} productos '
                             f'(se quitaron {removed} con existencia 0) -> {out}'))
         pdf = excel_a_pdf(out)
