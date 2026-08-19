@@ -363,9 +363,50 @@ def _estilos_borde(sheet_data, styles_data):
     return _xml_bytes(sroot), (variante, fallback)
 
 
-def build_from_base(rows, base_path, out_path, reemplazos, specs, autoborder=False):
+def _formato_bs(styles_data):
+    """Cambia el formato de número de celdas de precio para usar formato venezolano:
+    #.##0,00 (coma decimal, punto de miles) en lugar de #,##0.00 (formato US).
+    Agrega un numFmt personalizado (numFmtId=165) y actualiza los estilos
+    que usan numFmtId=4 (built-in #,##0.00) para usar el nuevo formato."""
+    root = ET.fromstring(styles_data)
+
+    numfmts = root.find(f'{{{NS}}}numFmts')
+    if numfmts is None:
+        numfmts = ET.SubElement(root, f'{{{NS}}}numFmts')
+        root.insert(0, numfmts)
+
+    ya_existe = any(
+        nf.get('numFmtId') == '165'
+        for nf in numfmts
+        if _localname(nf.tag) == 'numFmt'
+    )
+    if not ya_existe:
+        nf = ET.SubElement(numfmts, f'{{{NS}}}numFmt')
+        nf.set('numFmtId', '165')
+        nf.set('formatCode', '#,##0.00')
+        numfmts.set('count', str(sum(1 for _ in numfmts)))
+
+    cellxfs = None
+    for el in root:
+        if _localname(el.tag) == 'cellXfs':
+            cellxfs = el
+            break
+
+    if cellxfs is not None:
+        for xf in cellxfs:
+            if _localname(xf.tag) != 'xf':
+                continue
+            if xf.get('numFmtId') == '4':
+                xf.set('numFmtId', '165')
+
+    return _xml_bytes(root)
+
+
+def build_from_base(rows, base_path, out_path, reemplazos, specs, autoborder=False,
+                    formato_bs=False):
     """Rellena la plantilla base con los productos y guarda out_path.
-    autoborder=True deja los bordes solo en las celdas que tienen datos."""
+    autoborder=True deja los bordes solo en las celdas que tienen datos.
+    formato_bs=True aplica formato #,##0.00 a los numeros."""
     valores = []
     for r in rows:
         for _, clave, tipo in specs:
@@ -383,6 +424,8 @@ def build_from_base(rows, base_path, out_path, reemplazos, specs, autoborder=Fal
     borde_mapa = None
     if autoborder:
         styles_data, borde_mapa = _estilos_borde(sheet_data, styles_data)
+    if formato_bs:
+        styles_data = _formato_bs(styles_data)
     sheet_bytes = _fill_sheet(sheet_data, rows, string_idx, specs, borde_mapa)
 
     i = 0
@@ -567,7 +610,8 @@ def main_lista_bs():
     nombre = 'Lista Zm Bs ' + date.today().strftime('%d-%m-%Y') + '.xlsx'
     os.makedirs(CARPETA_SALIDAS, exist_ok=True)
     out = os.path.join(CARPETA_SALIDAS, nombre)
-    out = build_from_base(rows, base_path, out, reemplazos, specs, autoborder=True)
+    out = build_from_base(rows, base_path, out, reemplazos, specs, autoborder=True,
+                          formato_bs=True)
 
     print('-' * 60)
     print(consola.verde(f'  OK: {len(rows)} productos x {z} -> {out}'))
