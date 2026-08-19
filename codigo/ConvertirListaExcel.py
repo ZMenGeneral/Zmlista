@@ -607,7 +607,7 @@ def main_lista_bs():
         (7, 'cant', 'n'),
     ]
 
-    nombre = 'Lista Zm Bs ' + date.today().strftime('%d-%m-%Y') + '.xlsx'
+    nombre = 'LISTA ZM BS ' + date.today().strftime('%d-%m-%Y') + '.xlsx'
     os.makedirs(CARPETA_SALIDAS, exist_ok=True)
     out = os.path.join(CARPETA_SALIDAS, nombre)
     out = build_from_base(rows, base_path, out, reemplazos, specs, autoborder=True,
@@ -655,7 +655,7 @@ def _main_lista():
     else:
         items = [origen]
 
-    nombre = 'Lista Zm ' + date.today().strftime('%d-%m-%Y') + '.xlsx'
+    nombre = 'LISTA ZM ' + date.today().strftime('%d-%m-%Y') + '.xlsx'
     os.makedirs(CARPETA_SALIDAS, exist_ok=True)
 
     reemplazos = {'DD/MM/AAAA': date.today().strftime('%d/%m/%Y')}
