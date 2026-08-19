@@ -6,3 +6,5 @@ pdfs/
 ~$*.xlsx
 config/
 llavecitasdelacasitadeangel.md
+node_modules/
+.opencode/
