@@ -628,12 +628,35 @@ def main_lista_bs():
     print()
     consola.separador()
 
+    archivos = [out]
+    if pdf:
+        archivos.append(pdf)
+    _subir_a_drive(archivos, carpeta='folder_opcion2')
+
+
+def _subir_a_drive(archivos, carpeta='folder_opcion1'):
+    try:
+        from GoogleDrive import subir_listas, _cargar_config
+        config = _cargar_config()
+        folder_id = config.get(carpeta)
+        if not folder_id:
+            print(consola.amarillo('  (No hay carpeta configurada en Google Drive)'))
+            return
+        print()
+        print('  Subiendo archivos a Google Drive...')
+        resultado = subir_listas(archivos, folder_id)
+        if resultado is not None:
+            print(consola.verde(f'  {resultado} archivos subidos a Google Drive'))
+    except Exception as e:
+        print(consola.amarillo(f'  (No se pudo subir a Google Drive: {e})'))
+
 
 def _main_lista():
     args = sys.argv[1:]
 
     consola.titulo('OPCION 1 - LISTA DE PRECIOS (TXT -> EXCEL)')
 
+    archivos_generados = []
     origen = args[0] if len(args) >= 1 else None
 
     base_path = os.path.join(CARPETA_PLANTILLAS, 'LISTA base.xlsx')
@@ -692,6 +715,9 @@ def _main_lista():
         pdf = excel_a_pdf(out)
         if pdf:
             print(consola.verde(f'  PDF generado: {pdf}'))
+        archivos_generados.append(out)
+        if pdf:
+            archivos_generados.append(pdf)
         fila_inicio = 13
         fila_fin = fila_inicio + len(rows) - 1
         print()
@@ -714,6 +740,8 @@ def _main_lista():
     print('-' * 60)
     print(consola.cian(consola.negrita(f'  Total productos convertidos: {total}')))
     consola.separador()
+
+    _subir_a_drive(archivos_generados)
 
 
 def main():
