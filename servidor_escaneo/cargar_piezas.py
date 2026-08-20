@@ -44,9 +44,8 @@ def leer_piezas_excel(ruta_excel):
             break
 
     if not hdr_row or 'pieza' not in cols:
-        raise ValueError(
-            'No se encontró la columna de Pieza/Código en el Excel.\n'
-            'Asegurate de que la Columna A tenga "Pieza" o "Código" como header.')
+        hdr_row = 0
+        cols = {'pieza': 1, 'desc': 2}
 
     filas = []
     for r in range(hdr_row + 1, (ws.max_row or hdr_row) + 1):
