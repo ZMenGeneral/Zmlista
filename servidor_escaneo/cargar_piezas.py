@@ -79,9 +79,20 @@ def main():
     print('=' * 55)
     print()
 
-    ruta = input('  Ruta del Excel: ').strip().strip('"')
-    if not os.path.exists(ruta):
-        print(f'  No se encontró: {ruta}')
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    ruta = filedialog.askopenfilename(
+        title='Selecciona el Excel de piezas',
+        filetypes=[('Archivos Excel', '*.xlsx'), ('Todos los archivos', '*.*')],
+    )
+    root.destroy()
+
+    if not ruta:
+        print('  No se seleccionó ningún archivo.')
         return
 
     print()
