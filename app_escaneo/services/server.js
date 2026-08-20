@@ -1,43 +1,78 @@
 let ws = null;
 let servidorIp = '';
 let onMensaje = null;
+let onDesconexion = null;
+let reconnectTimer = null;
+let reconnectDelay = 1000;
+let manualClose = false;
 
 export { servidorIp };
 
-export const connectWebSocket = (ip, callback) => {
+const crearConexion = (ip) => {
+  const url = `ws://${ip}:8000/ws`;
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    console.log('Conectado al servidor');
+    reconnectDelay = 1000;
+    if (onMensaje) onMensaje({ tipo: '_conexion_ok' });
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (onMensaje) onMensaje(msg);
+    } catch (e) {
+      console.error('Error parsing mensaje:', e);
+    }
+  };
+
+  ws.onerror = (error) => {
+    console.error('WebSocket error:', error);
+  };
+
+  ws.onclose = () => {
+    console.log('Desconectado del servidor');
+    if (manualClose) return;
+    if (onDesconexion) onDesconexion();
+    reconnectTimer = setTimeout(() => {
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+      crearConexion(ip);
+    }, reconnectDelay);
+  };
+};
+
+export const connectWebSocket = (ip, callback, onDisconnect) => {
   return new Promise((resolve, reject) => {
+    manualClose = false;
     servidorIp = ip;
     onMensaje = callback;
+    onDesconexion = onDisconnect || null;
 
-    const url = `ws://${ip}:8000/ws`;
-    ws = new WebSocket(url);
+    crearConexion(ip);
 
-    ws.onopen = () => {
-      console.log('Conectado al servidor');
-      resolve();
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (onMensaje) onMensaje(msg);
-      } catch (e) {
-        console.error('Error parsing mensaje:', e);
+    const checkOpen = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        clearInterval(checkOpen);
+        resolve();
       }
-    };
+    }, 100);
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      reject(error);
-    };
-
-    ws.onclose = () => {
-      console.log('Desconectado del servidor');
-    };
+    setTimeout(() => {
+      clearInterval(checkOpen);
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        reject(new Error('Timeout'));
+      }
+    }, 5000);
   });
 };
 
 export const disconnectWs = () => {
+  manualClose = true;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   if (ws) {
     ws.close();
     ws = null;
@@ -53,21 +88,8 @@ export const enviarEscaneo = async (codigo, datosExtra = '') => {
     body: JSON.stringify({
       codigo,
       datos_extra: datosExtra,
-      timestamp: new Date().toISOString(),
     }),
   });
 
   return response.json();
-};
-
-export const solicitarLista = () => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ tipo: 'solicitar_lista' }));
-  }
-};
-
-export const solicitarEstadisticas = () => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ tipo: 'solicitar_estadisticas' }));
-  }
 };

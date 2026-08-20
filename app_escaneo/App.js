@@ -15,29 +15,39 @@ export default function App() {
     return () => disconnectWs();
   }, []);
 
+  const manejarMensaje = (msg) => {
+    if (msg.tipo === 'confirmacion') {
+      setHistorial(prev => {
+        const existe = prev.find(h => h.codigo === msg.codigo);
+        if (existe) {
+          return prev.map(h =>
+            h.codigo === msg.codigo ? { ...h, cantidad: msg.cantidad_total } : h
+          );
+        }
+        return [{ codigo: msg.codigo, cantidad: msg.cantidad_total, nuevo: true }, ...prev];
+      });
+      setStats(prev => ({
+        codigos_unicos: prev.codigos_unicos + (msg.nuevo ? 1 : 0),
+        unidades_totales: prev.unidades_totales + 1,
+      }));
+    } else if (msg.tipo === 'conexion') {
+      if (msg.estadisticas) setStats(msg.estadisticas);
+      if (msg.escaneos) setHistorial(msg.escaneos);
+    } else if (msg.tipo === 'estadisticas') {
+      setStats(msg.estadisticas);
+    } else if (msg.tipo === 'lista') {
+      setHistorial(msg.escaneos);
+    }
+  };
+
+  const reconectar = () => {
+    setConectado(false);
+    Alert.alert('Desconectado', 'Se perdio la conexion con el servidor');
+  };
+
   const conectar = async (ip) => {
     try {
-      await connectWebSocket(ip, (msg) => {
-        if (msg.tipo === 'confirmacion') {
-          setHistorial(prev => {
-            const existe = prev.find(h => h.codigo === msg.codigo);
-            if (existe) {
-              return prev.map(h =>
-                h.codigo === msg.codigo ? { ...h, cantidad: msg.cantidad_total } : h
-              );
-            }
-            return [{ codigo: msg.codigo, cantidad: msg.cantidad_total, nuevo: true }, ...prev];
-          });
-          setStats(prev => ({
-            codigos_unicos: prev.codigos_unicos + (msg.nuevo ? 1 : 0),
-            unidades_totales: prev.unidades_totales + 1,
-          }));
-        } else if (msg.tipo === 'estadisticas') {
-          setStats(msg.estadisticas);
-        } else if (msg.tipo === 'lista') {
-          setHistorial(msg.escaneos);
-        }
-      });
+      await connectWebSocket(ip, manejarMensaje, reconectar);
       setConectado(true);
       setIpServidor(ip);
     } catch (e) {
@@ -85,7 +95,6 @@ export default function App() {
         >
           <Text style={styles.botonTexto}>Conectar al Servidor</Text>
         </TouchableOpacity>
-        <StatusBar style="auto" />
       </View>
     );
   }

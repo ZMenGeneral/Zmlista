@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Vibration } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
@@ -14,7 +14,7 @@ export default function ScannerScreen({ onEscaneado, onVolver }) {
     }
   }, [permission]);
 
-  const handleBarcodeScanned = ({ type, data }) => {
+  const handleBarcodeScanned = useCallback(({ type, data }) => {
     if (!escaneandoRef.current) return;
     escaneandoRef.current = false;
 
@@ -26,7 +26,7 @@ export default function ScannerScreen({ onEscaneado, onVolver }) {
     setTimeout(() => {
       escaneandoRef.current = true;
     }, 300);
-  };
+  }, [onEscaneado]);
 
   if (!permission) {
     return (

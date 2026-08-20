@@ -9,6 +9,7 @@ Uso:
     python servidor.py --port 9000  (puerto personalizado)
 """
 import argparse
+import html
 import json
 import os
 import socket
@@ -41,8 +42,8 @@ def obtener_ip_local():
 @app.post('/scan')
 async def recibir_escaneo(data: dict):
     """Recibe un escaneo desde la app móvil."""
-    codigo = data.get('codigo', '').strip()
-    datos_extra = data.get('datos_extra', '').strip()
+    codigo = str(data.get('codigo', '')).strip()[:100]
+    datos_extra = str(data.get('datos_extra', '')).strip()[:200]
 
     if not codigo:
         return {'error': 'Código vacío'}
@@ -105,8 +106,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 })
     except WebSocketDisconnect:
         pass
-    except Exception:
-        pass
+    except Exception as e:
+        print(f'  [WS] Error: {e}')
     finally:
         if websocket in clientes_ws:
             clientes_ws.remove(websocket)
@@ -122,10 +123,12 @@ async def pagina_principal():
     filas = ''
     for e in escaneos:
         fecha = e['fecha_escaneo'][:16].replace('T', ' ')
+        codigo_safe = html.escape(str(e["codigo"]))
+        datos_safe = html.escape(str(e["datos_extra"])[:50])
         filas += f'''
         <tr>
-            <td>{e["codigo"]}</td>
-            <td>{e["datos_extra"][:50]}</td>
+            <td>{codigo_safe}</td>
+            <td>{datos_safe}</td>
             <td class="cant">{e["cantidad"]}</td>
             <td>{fecha}</td>
         </tr>'''
