@@ -428,25 +428,27 @@ def build_from_base(rows, base_path, out_path, reemplazos, specs, autoborder=Fal
         styles_data = _formato_bs(styles_data)
     sheet_bytes = _fill_sheet(sheet_data, rows, string_idx, specs, borde_mapa)
 
-    i = 0
-    while True:
-        try:
-            destino = out_path if i == 0 else f"{os.path.splitext(out_path)[0]}.({i}){os.path.splitext(out_path)[1]}"
-            with zipfile.ZipFile(destino, 'w', zipfile.ZIP_DEFLATED) as z2:
-                for item in z.infolist():
-                    data = z.read(item.filename)
-                    if item.filename == 'xl/sharedStrings.xml':
-                        data = ss_bytes
-                    elif item.filename == 'xl/worksheets/sheet1.xml':
-                        data = sheet_bytes
-                    elif item.filename == 'xl/styles.xml':
-                        data = styles_data
-                    z2.writestr(item, data)
-            return destino
-        except PermissionError:
-            i += 1
-        finally:
-            z.close()
+    try:
+        if os.path.exists(out_path):
+            os.remove(out_path)
+    except PermissionError:
+        pass
+
+    try:
+        with zipfile.ZipFile(out_path, 'w', zipfile.ZIP_DEFLATED) as z2:
+            for item in z.infolist():
+                data = z.read(item.filename)
+                if item.filename == 'xl/sharedStrings.xml':
+                    data = ss_bytes
+                elif item.filename == 'xl/worksheets/sheet1.xml':
+                    data = sheet_bytes
+                elif item.filename == 'xl/styles.xml':
+                    data = styles_data
+                z2.writestr(item, data)
+    finally:
+        z.close()
+
+    return out_path
 
 
 def ask_file_dialog():
