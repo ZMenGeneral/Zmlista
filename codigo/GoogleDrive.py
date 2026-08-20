@@ -13,7 +13,7 @@ CONFIG_DIR = os.path.join(CARPETA_PROYECTO, 'config')
 CONFIG_PATH = os.path.join(CONFIG_DIR, 'google_drive.json')
 TOKEN_PATH = os.path.join(CONFIG_DIR, 'google_token.json')
 
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
+SCOPES = ['https://www.googleapis.com/auth/drive']
 
 
 def _cargar_config():
@@ -63,7 +63,7 @@ def subir_listas(archivos, folder_id):
     """Borra los archivos viejos de la carpeta y sube los nuevos.
     archivos = lista de rutas locales (.xlsx, .pdf)
     folder_id = ID de la carpeta en Google Drive
-    Returns: cantidad de archivos subidos, o None si fallo."""
+    Returns: (borrados, subidos) o None si fallo."""
     try:
         service = autenticar()
         borados = _borrar_archivos_carpeta(service, folder_id)
@@ -82,7 +82,7 @@ def subir_listas(archivos, folder_id):
                 fields='id',
             ).execute()
             subidos += 1
-        return subidos
+        return borados, subidos
     except Exception as e:
         print(f'  (Error al subir a Google Drive: {e})')
         return None

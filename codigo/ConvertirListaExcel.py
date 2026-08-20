@@ -646,7 +646,8 @@ def _subir_a_drive(archivos, carpeta='folder_opcion1'):
         print('  Subiendo archivos a Google Drive...')
         resultado = subir_listas(archivos, folder_id)
         if resultado is not None:
-            print(consola.verde(f'  {resultado} archivos subidos a Google Drive'))
+            borados, subidos = resultado
+            print(consola.verde(f'  {borados} archivos eliminados, {subidos} subidos a Google Drive'))
     except Exception as e:
         print(consola.amarillo(f'  (No se pudo subir a Google Drive: {e})'))
 
