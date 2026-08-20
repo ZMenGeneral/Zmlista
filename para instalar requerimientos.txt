@@ -1,0 +1,1 @@
+pip install -r requerimientos.txt correr esto en la terminal de python 
