@@ -93,3 +93,29 @@ export const enviarEscaneo = async (codigo, datosExtra = '') => {
 
   return response.json();
 };
+
+export const listarPiezas = async (buscar = '') => {
+  if (!servidorIp) throw new Error('No conectado al servidor');
+  const params = buscar ? `?buscar=${encodeURIComponent(buscar)}` : '';
+  const response = await fetch(`http://${servidorIp}:8000/piezas${params}`);
+  return response.json();
+};
+
+export const buscarBarra = async (codigo) => {
+  if (!servidorIp) throw new Error('No conectado al servidor');
+  const response = await fetch(`http://${servidorIp}:8000/barra/${encodeURIComponent(codigo)}`);
+  return response.json();
+};
+
+export const asociarBarra = async (codigoBarra, codigoPieza) => {
+  if (!servidorIp) throw new Error('No conectado al servidor');
+  const response = await fetch(`http://${servidorIp}:8000/asociar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      codigo_barra: codigoBarra,
+      codigo_pieza: codigoPieza,
+    }),
+  });
+  return response.json();
+};

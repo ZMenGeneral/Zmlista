@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import ScannerScreen from './screens/ScannerScreen';
-import { connectWebSocket, disconnectWs, enviarEscaneo, servidorIp } from './services/server';
+import PiezasScreen from './screens/PiezasScreen';
+import { connectWebSocket, disconnectWs, enviarEscaneo, buscarBarra, asociarBarra, servidorIp } from './services/server';
 
 export default function App() {
   const [conectado, setConectado] = useState(false);
@@ -10,6 +11,10 @@ export default function App() {
   const [historial, setHistorial] = useState([]);
   const [stats, setStats] = useState({ codigos_unicos: 0, unidades_totales: 0 });
   const [ipServidor, setIpServidor] = useState('');
+
+  const [busquedaPieza, setBusquedaPieza] = useState(false);
+  const [codigoPendiente, setCodigoPendiente] = useState('');
+  const [piezaConfirmada, setPiezaConfirmada] = useState('');
 
   useEffect(() => {
     return () => disconnectWs();
@@ -19,12 +24,19 @@ export default function App() {
     if (msg.tipo === 'confirmacion') {
       setHistorial(prev => {
         const existe = prev.find(h => h.codigo === msg.codigo);
+        const entrada = {
+          codigo: msg.codigo,
+          cantidad: msg.cantidad_total,
+          nuevo: true,
+          codigo_pieza: msg.codigo_pieza || null,
+          descripcion: msg.descripcion || '',
+        };
         if (existe) {
           return prev.map(h =>
             h.codigo === msg.codigo ? { ...h, cantidad: msg.cantidad_total } : h
           );
         }
-        return [{ codigo: msg.codigo, cantidad: msg.cantidad_total, nuevo: true }, ...prev];
+        return [entrada, ...prev];
       });
       setStats(prev => ({
         codigos_unicos: prev.codigos_unicos + (msg.nuevo ? 1 : 0),
@@ -58,10 +70,58 @@ export default function App() {
   const escaneado = async (codigo) => {
     try {
       await enviarEscaneo(codigo, '');
+
+      const resultado = await buscarBarra(codigo);
+      if (resultado.error) {
+        setCodigoPendiente(codigo);
+        setBusquedaPieza(true);
+      } else {
+        setPiezaConfirmada(resultado.codigo_pieza);
+        setTimeout(() => setPiezaConfirmada(''), 2000);
+      }
     } catch (e) {
       Alert.alert('Error', 'No se pudo enviar el escaneo');
     }
   };
+
+  const seleccionarPieza = async (codigoPieza, descripcion) => {
+    try {
+      await asociarBarra(codigoPendiente, codigoPieza);
+      setBusquedaPieza(false);
+      setCodigoPendiente('');
+      setPiezaConfirmada(codigoPieza);
+      setTimeout(() => setPiezaConfirmada(''), 2000);
+
+      setHistorial(prev => {
+        const existe = prev.find(h => h.codigo === codigoPendiente);
+        if (existe) {
+          return prev.map(h =>
+            h.codigo === codigoPendiente
+              ? { ...h, codigo_pieza: codigoPieza, descripcion }
+              : h
+          );
+        }
+        return prev;
+      });
+    } catch (e) {
+      Alert.alert('Error', 'No se pudo asociar la pieza');
+    }
+  };
+
+  if (busquedaPieza) {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="light" />
+        <PiezasScreen
+          onSeleccionar={seleccionarPieza}
+          onVolver={() => {
+            setBusquedaPieza(false);
+            setCodigoPendiente('');
+          }}
+        />
+      </View>
+    );
+  }
 
   if (escaneando) {
     return (
@@ -70,6 +130,8 @@ export default function App() {
         <ScannerScreen
           onEscaneado={escaneado}
           onVolver={() => setEscaneando(false)}
+          piezaActual={piezaConfirmada}
+          codigoPendiente={codigoPendiente}
         />
       </View>
     );
@@ -129,7 +191,14 @@ export default function App() {
         keyExtractor={(item, idx) => `${item.codigo}-${idx}`}
         renderItem={({ item }) => (
           <View style={styles.itemHistorial}>
-            <Text style={styles.itemCodigo}>{item.codigo}</Text>
+            <View style={styles.itemInfo}>
+              <Text style={styles.itemCodigo}>
+                {item.codigo_pieza || item.codigo}
+              </Text>
+              {item.codigo_pieza ? (
+                <Text style={styles.itemBarcode}>{item.codigo}</Text>
+              ) : null}
+            </View>
             <Text style={styles.itemCantidad}>x{item.cantidad}</Text>
           </View>
         )}
@@ -223,15 +292,25 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  itemInfo: {
+    flex: 1,
   },
   itemCodigo: {
-    color: '#eee',
-    fontSize: 14,
-    fontWeight: '600',
+    color: '#00ff88',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  itemBarcode: {
+    color: '#666',
+    fontSize: 11,
+    marginTop: 1,
   },
   itemCantidad: {
-    color: '#00ff88',
+    color: '#eee',
     fontSize: 16,
     fontWeight: 'bold',
+    marginLeft: 10,
   },
 });

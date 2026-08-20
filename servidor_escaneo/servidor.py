@@ -18,6 +18,7 @@ from datetime import datetime
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
+from typing import Optional
 import uvicorn
 
 import database
@@ -51,7 +52,13 @@ async def recibir_escaneo(data: dict):
     cantidad, es_nuevo = database.guardar_escaneo(codigo, datos_extra)
     ahora = datetime.now().strftime('%H:%M:%S')
 
-    if es_nuevo:
+    pieza = database.buscar_barra(codigo)
+    pieza_info = pieza.get('codigo_pieza') if pieza else None
+    desc_info = pieza.get('descripcion', '') if pieza else ''
+
+    if pieza_info:
+        print(f'  [{ahora}] {consola_verde(codigo)} → {consola_cyan(pieza_info)} x{cantidad}')
+    elif es_nuevo:
         print(f'  [{ahora}] {consola_verde(codigo)} x{cantidad} (nuevo)')
     else:
         print(f'  [{ahora}] {consola_amarillo(codigo)} x{cantidad} (+1)')
@@ -61,6 +68,8 @@ async def recibir_escaneo(data: dict):
         'codigo': codigo,
         'cantidad_total': cantidad,
         'nuevo': es_nuevo,
+        'codigo_pieza': pieza_info,
+        'descripcion': desc_info,
     }
 
     for ws in clientes_ws[:]:
@@ -112,6 +121,44 @@ async def websocket_endpoint(websocket: WebSocket):
         if websocket in clientes_ws:
             clientes_ws.remove(websocket)
         print(f'  [WS] Cliente desconectado: {ip}')
+
+
+@app.get('/piezas')
+async def listar_piezas(buscar: Optional[str] = None):
+    """Lista piezas del catálogo. Filtra por código o descripción."""
+    return database.listar_piezas(buscar or '')
+
+
+@app.get('/barra/{codigo_barra}')
+async def buscar_barra(codigo_barra: str):
+    """Busca si un barcode tiene pieza asociada."""
+    pieza = database.buscar_barra(codigo_barra)
+    if pieza:
+        return {'codigo_barra': codigo_barra, **pieza}
+    return {'error': 'no encontrado'}
+
+
+@app.post('/asociar')
+async def asociar(data: dict):
+    """Vincula un barcode a una pieza."""
+    codigo_barra = str(data.get('codigo_barra', '')).strip()[:100]
+    codigo_pieza = str(data.get('codigo_pieza', '')).strip()[:100]
+    if not codigo_barra or not codigo_pieza:
+        return {'error': 'Faltan campos'}
+    database.asociar_barra(codigo_barra, codigo_pieza)
+    print(f'  [ASOC] {consola_cyan(codigo_barra)} → {consola_cyan(codigo_pieza)}')
+    return {'ok': True, 'codigo_barra': codigo_barra, 'codigo_pieza': codigo_pieza}
+
+
+@app.post('/cargar_piezas')
+async def cargar_piezas(data: dict):
+    """Recibe [{codigo_pieza, descripcion}] y los guarda en Supabase."""
+    mapeos = data.get('piezas', [])
+    if not mapeos:
+        return {'error': 'Sin datos'}
+    n = database.cargar_piezas(mapeos)
+    print(f'  [PIEZAS] Cargadas {consola_verde(str(n))} piezas')
+    return {'ok': True, 'insertadas': n}
 
 
 @app.get('/')
@@ -176,6 +223,10 @@ def consola_verde(texto):
 
 def consola_amarillo(texto):
     return f'\033[1;93m{texto}\033[0m'
+
+
+def consola_cyan(texto):
+    return f'\033[1;96m{texto}\033[0m'
 
 
 def generar_qr_terminal(url):

@@ -136,7 +136,8 @@ def mostrar_menu():
     print('  9. No vendidos: historial por mes')
     print('  10. Analizar facturas (PDF)')
     print('  11. Servidor de escaneo (movil)')
-    print('  12. Salir')
+    print('  12. Cargar piezas (Excel)')
+    print('  13. Salir')
     print('=' * 52)
     print()
 
@@ -230,6 +231,12 @@ def main():
             except Exception as e:
                 print(f'  Error: {e}')
             preguntar('\n  Presiona Enter para volver al menu...')
+        elif opcion == '12':
+            consola.limpiar()
+            sys.path.insert(0, os.path.join(RAIZ, 'servidor_escaneo'))
+            import cargar_piezas as cp
+            cp.main()
+            preguntar('\n  Presiona Enter para volver al menu...')
         elif opcion == '55585':
             consola.limpiar()
             print()
@@ -245,7 +252,7 @@ def main():
             except SystemExit as e:
                 print(f'  El bot no pudo iniciar: {e}')
             preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '12':
+        elif opcion == '13':
             print()
             print('  Cerrando programa. Hasta luego!')
             break

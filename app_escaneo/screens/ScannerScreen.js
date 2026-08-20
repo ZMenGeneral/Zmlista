@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Vibration } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
-export default function ScannerScreen({ onEscaneado, onVolver }) {
+export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codigoPendiente }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [ultimoCodigo, setUltimoCodigo] = useState('');
   const [contador, setContador] = useState(0);
@@ -64,7 +64,11 @@ export default function ScannerScreen({ onEscaneado, onVolver }) {
 
           <View style={styles.infoBar}>
             <Text style={styles.contador}>Escaneados: {contador}</Text>
-            {ultimoCodigo ? (
+            {piezaActual ? (
+              <Text style={styles.piezaConfirmada}>✓ {piezaActual}</Text>
+            ) : codigoPendiente ? (
+              <Text style={styles.pendiente}>Sin asociar - elige una pieza</Text>
+            ) : ultimoCodigo ? (
               <Text style={styles.ultimo}>Ultimo: {ultimoCodigo}</Text>
             ) : null}
           </View>
@@ -116,6 +120,16 @@ const styles = StyleSheet.create({
   ultimo: {
     color: '#fff',
     fontSize: 12,
+  },
+  piezaConfirmada: {
+    color: '#00ff88',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  pendiente: {
+    color: '#f39c12',
+    fontSize: 13,
+    fontWeight: '600',
   },
   botonVolver: {
     backgroundColor: '#e74c3c',
