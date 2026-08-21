@@ -24,6 +24,10 @@ import uvicorn
 import database
 import comparar_factura
 
+CARPETA_SERVIDOR = os.path.dirname(os.path.abspath(__file__))
+CARPETA_PROYECTO = os.path.dirname(CARPETA_SERVIDOR)
+sys.path.insert(0, os.path.join(CARPETA_PROYECTO, 'codigo'))
+
 app = FastAPI(title='Servidor de Escaneo')
 
 clientes_ws: list[WebSocket] = []
@@ -177,8 +181,33 @@ async def comparar(data: dict):
         return {'error': str(e)}
 
 
-@app.get('/')
-async def pagina_principal():
+@app.delete('/limpiar')
+async def limpiar():
+    """Elimina todos los escaneos de la sesión."""
+    database.limpiar()
+    print(f'  [LIMPIAR] Todos los escaneos eliminados')
+    return {'ok': True}
+
+
+@app.delete('/ultimo')
+async def borrar_ultimo():
+    """Elimina el escaneo más reciente."""
+    codigo = database.borrar_ultimo()
+    if codigo:
+        print(f'  [BORRAR] Último: {consola_amarillo(codigo)}')
+        return {'ok': True, 'codigo': codigo}
+    return {'ok': False, 'error': 'No hay escaneos'}
+
+
+@app.get('/facturas')
+async def listar_facturas():
+    """Lista las facturas disponibles en la carpeta de red."""
+    try:
+        import AnalizarFacturas
+        pdfs = AnalizarFacturas.obtener_facturas_recientes()
+        return {'facturas': pdfs}
+    except Exception as e:
+        return {'error': str(e), 'facturas': []}
     """Página web básica para ver los escaneos."""
     escaneos = database.obtener_todos()
     stats = database.obtener_estadisticas()

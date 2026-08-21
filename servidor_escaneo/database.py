@@ -75,6 +75,17 @@ def limpiar():
     _request('DELETE', TABLA_ESCANEOS, '?id=gt.0')
 
 
+def borrar_ultimo():
+    """Elimina el escaneo más reciente. Devuelve el código eliminado o None."""
+    filas = _request('GET', TABLA_ESCANEOS,
+                     '?select=id,codigo&order=fecha_actualizacion.desc&limit=1') or []
+    if not filas:
+        return None
+    fila = filas[0]
+    _request('DELETE', TABLA_ESCANEOS, f'?id=eq.{fila["id"]}')
+    return fila.get('codigo')
+
+
 # --- Funciones para piezas y vinculación barcode → pieza ---
 
 

@@ -129,3 +129,25 @@ export const compararFactura = async (rutaPdf) => {
   });
   return response.json();
 };
+
+export const limpiarScans = async () => {
+  if (!servidorIp) throw new Error('No conectado al servidor');
+  const response = await fetch(`http://${servidorIp}:8000/limpiar`, {
+    method: 'DELETE',
+  });
+  return response.json();
+};
+
+export const borrarUltimo = async () => {
+  if (!servidorIp) throw new Error('No conectado al servidor');
+  const response = await fetch(`http://${servidorIp}:8000/ultimo`, {
+    method: 'DELETE',
+  });
+  return response.json();
+};
+
+export const listarFacturas = async () => {
+  if (!servidorIp) throw new Error('No conectado al servidor');
+  const response = await fetch(`http://${servidorIp}:8000/facturas`);
+  return response.json();
+};

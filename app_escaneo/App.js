@@ -3,7 +3,11 @@ import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList } from 'react
 import { StatusBar } from 'expo-status-bar';
 import ScannerScreen from './screens/ScannerScreen';
 import PiezasScreen from './screens/PiezasScreen';
-import { connectWebSocket, disconnectWs, enviarEscaneo, buscarBarra, asociarBarra, compararFactura, servidorIp } from './services/server';
+import FacturasScreen from './screens/FacturasScreen';
+import {
+  connectWebSocket, disconnectWs, enviarEscaneo, buscarBarra, asociarBarra,
+  compararFactura, limpiarScans, borrarUltimo, servidorIp,
+} from './services/server';
 
 export default function App() {
   const [conectado, setConectado] = useState(false);
@@ -18,6 +22,7 @@ export default function App() {
 
   const [resultadoComparacion, setResultadoComparacion] = useState(null);
   const [cargandoComparacion, setCargandoComparacion] = useState(false);
+  const [seleccionandoFactura, setSeleccionandoFactura] = useState(false);
 
   useEffect(() => {
     return () => disconnectWs();
@@ -73,7 +78,6 @@ export default function App() {
   const escaneado = async (codigo) => {
     try {
       await enviarEscaneo(codigo, '');
-
       const resultado = await buscarBarra(codigo);
       if (resultado.error) {
         setCodigoPendiente(codigo);
@@ -94,7 +98,6 @@ export default function App() {
       setCodigoPendiente('');
       setPiezaConfirmada(codigoPieza);
       setTimeout(() => setPiezaConfirmada(''), 2000);
-
       setHistorial(prev => {
         const existe = prev.find(h => h.codigo === codigoPendiente);
         if (existe) {
@@ -111,83 +114,105 @@ export default function App() {
     }
   };
 
-  const iniciarComparacion = async () => {
+  const reiniciar = async () => {
+    Alert.alert('Reiniciar', '¿Borrar todos los escaneos?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Borrar',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await limpiarScans();
+            setHistorial([]);
+            setStats({ codigos_unicos: 0, unidades_totales: 0 });
+          } catch (e) {
+            Alert.alert('Error', 'No se pudieron borrar los escaneos');
+          }
+        },
+      },
+    ]);
+  };
+
+  const borrarUltimoScan = async () => {
+    if (historial.length === 0) {
+      Alert.alert('Vacío', 'No hay escaneos para borrar.');
+      return;
+    }
+    try {
+      const resultado = await borrarUltimo();
+      if (resultado.ok) {
+        setHistorial(prev => prev.slice(1));
+        setStats(prev => ({
+          codigos_unicos: Math.max(0, prev.codigos_unicos - 1),
+          unidades_totales: Math.max(0, prev.unidades_totales - 1),
+        }));
+      }
+    } catch (e) {
+      Alert.alert('Error', 'No se pudo borrar el último escaneo');
+    }
+  };
+
+  const iniciarComparacion = () => {
     if (historial.length === 0) {
       Alert.alert('Sin escaneos', 'Escanea algunos productos primero.');
       return;
     }
-
-    Alert.alert(
-      'Comparar con factura',
-      'Selecciona el PDF de la factura en el servidor',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Seleccionar',
-          onPress: async () => {
-            try {
-              const rutas = await seleccionarFactura();
-              if (!rutas) return;
-              setCargandoComparacion(true);
-              const resultado = await compararFactura(rutas[0]);
-              if (resultado.error) {
-                Alert.alert('Error', resultado.error);
-                setCargandoComparacion(false);
-                return;
-              }
-              const escaneados = {};
-              historial.forEach(h => {
-                const key = h.codigo_pieza || h.codigo;
-                escaneados[key] = (escaneados[key] || 0) + h.cantidad;
-              });
-              const factura = {};
-              resultado.items.forEach(it => {
-                factura[it.codigo] = (factura[it.codigo] || 0) + it.cant;
-              });
-              const coinciden = [];
-              const faltan = [];
-              const sobran = [];
-              Object.keys(factura).forEach(cod => {
-                if (escaneados[cod]) {
-                  coinciden.push({ codigo: cod, factura: factura[cod], escaneado: escaneados[cod] });
-                } else {
-                  faltan.push({ codigo: cod, factura: factura[cod] });
-                }
-              });
-              Object.keys(escaneados).forEach(cod => {
-                if (!factura[cod]) {
-                  sobran.push({ codigo: cod, escaneado: escaneados[cod] });
-                }
-              });
-              setResultadoComparacion({
-                factura: resultado.factura,
-                coinciden,
-                faltan,
-                sobran,
-              });
-            } catch (e) {
-              Alert.alert('Error', 'No se pudo comparar: ' + e.message);
-            }
-            setCargandoComparacion(false);
-          },
-        },
-      ]
-    );
+    setSeleccionandoFactura(true);
   };
 
-  const seleccionarFactura = () => {
-    return new Promise((resolve) => {
-      Alert.prompt(
-        'Ruta de la factura',
-        'Pega la ruta completa del PDF en el servidor',
-        (ruta) => resolve(ruta ? ruta.trim() : null),
-        'plain-text',
-        '\\\\Principal\\c\\Users\\SERVIDOR\\Documents\\Negocio\\ZM Autopartes\\FACTURAS\\2026\\AGOSTO\\'
-      );
-    });
+  const facturaSeleccionada = async (rutaPdf, numeroFactura) => {
+    setSeleccionandoFactura(false);
+    setCargandoComparacion(true);
+    try {
+      const resultado = await compararFactura(rutaPdf);
+      if (resultado.error) {
+        Alert.alert('Error', resultado.error);
+        setCargandoComparacion(false);
+        return;
+      }
+      const escaneados = {};
+      historial.forEach(h => {
+        const key = h.codigo_pieza || h.codigo;
+        escaneados[key] = (escaneados[key] || 0) + h.cantidad;
+      });
+      const factura = {};
+      resultado.items.forEach(it => {
+        factura[it.codigo] = (factura[it.codigo] || 0) + it.cant;
+      });
+      const coinciden = [];
+      const faltan = [];
+      const sobran = [];
+      Object.keys(factura).forEach(cod => {
+        if (escaneados[cod]) {
+          coinciden.push({ codigo: cod, factura: factura[cod], escaneado: escaneados[cod] });
+        } else {
+          faltan.push({ codigo: cod, factura: factura[cod] });
+        }
+      });
+      Object.keys(escaneados).forEach(cod => {
+        if (!factura[cod]) {
+          sobran.push({ codigo: cod, escaneado: escaneados[cod] });
+        }
+      });
+      setResultadoComparacion({
+        factura: resultado.factura,
+        coinciden,
+        faltan,
+        sobran,
+      });
+    } catch (e) {
+      Alert.alert('Error', 'No se pudo comparar: ' + e.message);
+    }
+    setCargandoComparacion(false);
   };
 
-  const resetearComparacion = () => {
+  const resetearComparacion = async () => {
+    try {
+      await limpiarScans();
+      setHistorial([]);
+      setStats({ codigos_unicos: 0, unidades_totales: 0 });
+    } catch (e) {
+    }
     setResultadoComparacion(null);
   };
 
@@ -197,10 +222,19 @@ export default function App() {
         <StatusBar style="light" />
         <PiezasScreen
           onSeleccionar={seleccionarPieza}
-          onVolver={() => {
-            setBusquedaPieza(false);
-            setCodigoPendiente('');
-          }}
+          onVolver={() => { setBusquedaPieza(false); setCodigoPendiente(''); }}
+        />
+      </View>
+    );
+  }
+
+  if (seleccionandoFactura) {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="light" />
+        <FacturasScreen
+          onSeleccionar={facturaSeleccionada}
+          onVolver={() => setSeleccionandoFactura(false)}
         />
       </View>
     );
@@ -327,13 +361,9 @@ export default function App() {
       </View>
 
       <View style={styles.botonesRow}>
-        <TouchableOpacity
-          style={styles.botonEscanear}
-          onPress={() => setEscaneando(true)}
-        >
+        <TouchableOpacity style={styles.botonEscanear} onPress={() => setEscaneando(true)}>
           <Text style={styles.botonTexto}>Escanear</Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           style={[styles.botonComparar, cargandoComparacion && styles.botonDeshabilitado]}
           onPress={iniciarComparacion}
@@ -342,6 +372,15 @@ export default function App() {
           <Text style={styles.botonTexto}>
             {cargandoComparacion ? 'Cargando...' : 'Comparar'}
           </Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.botonesRow}>
+        <TouchableOpacity style={styles.botonReiniciar} onPress={reiniciar}>
+          <Text style={styles.botonTextoPeq}>Reiniciar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.botonBorrar} onPress={borrarUltimoScan}>
+          <Text style={styles.botonTextoPeq}>Borrar último</Text>
         </TouchableOpacity>
       </View>
 
@@ -402,19 +441,31 @@ const styles = StyleSheet.create({
   botonesRow: {
     flexDirection: 'row',
     gap: 12,
-    marginVertical: 16,
+    marginVertical: 6,
   },
   botonEscanear: {
     backgroundColor: '#00d4ff',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
   },
   botonComparar: {
     backgroundColor: '#9b59b6',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+  },
+  botonReiniciar: {
+    backgroundColor: '#e74c3c',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+  },
+  botonBorrar: {
+    backgroundColor: '#e67e22',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 10,
   },
   botonDeshabilitado: {
     backgroundColor: '#666',
@@ -430,6 +481,12 @@ const styles = StyleSheet.create({
   botonTexto: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  botonTextoPeq: {
+    color: '#fff',
+    fontSize: 13,
     fontWeight: 'bold',
     textAlign: 'center',
   },
