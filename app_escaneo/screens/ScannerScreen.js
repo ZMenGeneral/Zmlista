@@ -6,7 +6,8 @@ export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codi
   const [permission, requestPermission] = useCameraPermissions();
   const [ultimoCodigo, setUltimoCodigo] = useState('');
   const [contador, setContador] = useState(0);
-  const escaneandoRef = useRef(true);
+  const [puedeEscanear, setPuedeEscanear] = useState(false);
+  const procesandoRef = useRef(false);
 
   useEffect(() => {
     if (permission && !permission.granted) {
@@ -15,18 +16,23 @@ export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codi
   }, [permission]);
 
   const handleBarcodeScanned = useCallback(({ type, data }) => {
-    if (!escaneandoRef.current) return;
-    escaneandoRef.current = false;
+    if (procesandoRef.current) return;
+    procesandoRef.current = true;
+    setPuedeEscanear(false);
 
-    Vibration.vibrate(50);
+    Vibration.vibrate(100);
     setUltimoCodigo(data);
     setContador(c => c + 1);
     onEscaneado(data);
 
     setTimeout(() => {
-      escaneandoRef.current = true;
-    }, 300);
+      procesandoRef.current = false;
+    }, 1000);
   }, [onEscaneado]);
+
+  const capturar = () => {
+    setPuedeEscanear(true);
+  };
 
   if (!permission) {
     return (
@@ -40,7 +46,7 @@ export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codi
     return (
       <View style={styles.permisoContainer}>
         <Text style={styles.permisoTexto}>Se necesita acceso a la camara</Text>
-        <TouchableOpacity style={styles.botonVolver} onPress={requestPermission}>
+        <TouchableOpacity style={styles.botonPermiso} onPress={requestPermission}>
           <Text style={styles.botonTexto}>Dar permiso</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.botonVolver} onPress={onVolver}>
@@ -54,7 +60,7 @@ export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codi
     <View style={styles.container}>
       <CameraView
         style={styles.camera}
-        onBarcodeScanned={handleBarcodeScanned}
+        onBarcodeScanned={puedeEscanear ? handleBarcodeScanned : undefined}
         barcodeScannerSettings={{
           barcodeTypes: ['code128', 'code39', 'ean13', 'upc_a', 'qr'],
         }}
@@ -73,9 +79,21 @@ export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codi
             ) : null}
           </View>
 
-          <TouchableOpacity style={styles.botonVolver} onPress={onVolver}>
-            <Text style={styles.botonTexto}>Volver</Text>
-          </TouchableOpacity>
+          <View style={styles.bottomRow}>
+            <TouchableOpacity style={styles.botonVolver} onPress={onVolver}>
+              <Text style={styles.botonTexto}>Volver</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.botonCaptura, puedeEscanear && styles.botonCapturando]}
+              onPress={capturar}
+              disabled={puedeEscanear}
+            >
+              <View style={styles.botonCapturaInner} />
+            </TouchableOpacity>
+
+            <View style={{ width: 80 }} />
+          </View>
         </View>
       </CameraView>
     </View>
@@ -131,15 +149,50 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  bottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 20,
+  },
+  botonCaptura: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    borderWidth: 4,
+    borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  botonCapturando: {
+    borderColor: '#00ff88',
+    backgroundColor: 'rgba(0,255,136,0.3)',
+  },
+  botonCapturaInner: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#fff',
+  },
   botonVolver: {
     backgroundColor: '#e74c3c',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    width: 80,
+    alignItems: 'center',
+  },
+  botonPermiso: {
+    backgroundColor: '#0f3460',
     paddingVertical: 14,
     paddingHorizontal: 40,
     borderRadius: 12,
   },
   botonTexto: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
     textAlign: 'center',
   },

@@ -119,3 +119,13 @@ export const asociarBarra = async (codigoBarra, codigoPieza) => {
   });
   return response.json();
 };
+
+export const compararFactura = async (rutaPdf) => {
+  if (!servidorIp) throw new Error('No conectado al servidor');
+  const response = await fetch(`http://${servidorIp}:8000/comparar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ruta: rutaPdf }),
+  });
+  return response.json();
+};

@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList } from 'react
 import { StatusBar } from 'expo-status-bar';
 import ScannerScreen from './screens/ScannerScreen';
 import PiezasScreen from './screens/PiezasScreen';
-import { connectWebSocket, disconnectWs, enviarEscaneo, buscarBarra, asociarBarra, servidorIp } from './services/server';
+import { connectWebSocket, disconnectWs, enviarEscaneo, buscarBarra, asociarBarra, compararFactura, servidorIp } from './services/server';
 
 export default function App() {
   const [conectado, setConectado] = useState(false);
@@ -15,6 +15,9 @@ export default function App() {
   const [busquedaPieza, setBusquedaPieza] = useState(false);
   const [codigoPendiente, setCodigoPendiente] = useState('');
   const [piezaConfirmada, setPiezaConfirmada] = useState('');
+
+  const [resultadoComparacion, setResultadoComparacion] = useState(null);
+  const [cargandoComparacion, setCargandoComparacion] = useState(false);
 
   useEffect(() => {
     return () => disconnectWs();
@@ -108,6 +111,86 @@ export default function App() {
     }
   };
 
+  const iniciarComparacion = async () => {
+    if (historial.length === 0) {
+      Alert.alert('Sin escaneos', 'Escanea algunos productos primero.');
+      return;
+    }
+
+    Alert.alert(
+      'Comparar con factura',
+      'Selecciona el PDF de la factura en el servidor',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Seleccionar',
+          onPress: async () => {
+            try {
+              const rutas = await seleccionarFactura();
+              if (!rutas) return;
+              setCargandoComparacion(true);
+              const resultado = await compararFactura(rutas[0]);
+              if (resultado.error) {
+                Alert.alert('Error', resultado.error);
+                setCargandoComparacion(false);
+                return;
+              }
+              const escaneados = {};
+              historial.forEach(h => {
+                const key = h.codigo_pieza || h.codigo;
+                escaneados[key] = (escaneados[key] || 0) + h.cantidad;
+              });
+              const factura = {};
+              resultado.items.forEach(it => {
+                factura[it.codigo] = (factura[it.codigo] || 0) + it.cant;
+              });
+              const coinciden = [];
+              const faltan = [];
+              const sobran = [];
+              Object.keys(factura).forEach(cod => {
+                if (escaneados[cod]) {
+                  coinciden.push({ codigo: cod, factura: factura[cod], escaneado: escaneados[cod] });
+                } else {
+                  faltan.push({ codigo: cod, factura: factura[cod] });
+                }
+              });
+              Object.keys(escaneados).forEach(cod => {
+                if (!factura[cod]) {
+                  sobran.push({ codigo: cod, escaneado: escaneados[cod] });
+                }
+              });
+              setResultadoComparacion({
+                factura: resultado.factura,
+                coinciden,
+                faltan,
+                sobran,
+              });
+            } catch (e) {
+              Alert.alert('Error', 'No se pudo comparar: ' + e.message);
+            }
+            setCargandoComparacion(false);
+          },
+        },
+      ]
+    );
+  };
+
+  const seleccionarFactura = () => {
+    return new Promise((resolve) => {
+      Alert.prompt(
+        'Ruta de la factura',
+        'Pega la ruta completa del PDF en el servidor',
+        (ruta) => resolve(ruta ? ruta.trim() : null),
+        'plain-text',
+        '\\\\Principal\\c\\Users\\SERVIDOR\\Documents\\Negocio\\ZM Autopartes\\FACTURAS\\2026\\AGOSTO\\'
+      );
+    });
+  };
+
+  const resetearComparacion = () => {
+    setResultadoComparacion(null);
+  };
+
   if (busquedaPieza) {
     return (
       <View style={styles.container}>
@@ -161,6 +244,71 @@ export default function App() {
     );
   }
 
+  if (resultadoComparacion) {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="light" />
+        <Text style={styles.titulo}>Resultado</Text>
+        <Text style={styles.conectado}>Factura: {resultadoComparacion.factura}</Text>
+
+        {resultadoComparacion.coinciden.length > 0 && (
+          <View style={styles.seccion}>
+            <Text style={styles.seccionTitulo}>✅ Coinciden ({resultadoComparacion.coinciden.length})</Text>
+            <FlatList
+              data={resultadoComparacion.coinciden}
+              keyExtractor={(item) => item.codigo}
+              renderItem={({ item }) => (
+                <View style={[styles.itemComp, styles.itemOk]}>
+                  <Text style={styles.itemCompCodigo}>{item.codigo}</Text>
+                  <Text style={styles.itemCompDetalle}>factura: {item.factura} | escaneado: {item.escaneado}</Text>
+                </View>
+              )}
+              style={styles.listaComp}
+            />
+          </View>
+        )}
+
+        {resultadoComparacion.faltan.length > 0 && (
+          <View style={styles.seccion}>
+            <Text style={styles.seccionTitulo}>❌ Faltan ({resultadoComparacion.faltan.length})</Text>
+            <FlatList
+              data={resultadoComparacion.faltan}
+              keyExtractor={(item) => item.codigo}
+              renderItem={({ item }) => (
+                <View style={[styles.itemComp, styles.itemFalta]}>
+                  <Text style={styles.itemCompCodigo}>{item.codigo}</Text>
+                  <Text style={styles.itemCompDetalle}>cant: {item.factura}</Text>
+                </View>
+              )}
+              style={styles.listaComp}
+            />
+          </View>
+        )}
+
+        {resultadoComparacion.sobran.length > 0 && (
+          <View style={styles.seccion}>
+            <Text style={styles.seccionTitulo}>⚠️ Sobran ({resultadoComparacion.sobran.length})</Text>
+            <FlatList
+              data={resultadoComparacion.sobran}
+              keyExtractor={(item) => item.codigo}
+              renderItem={({ item }) => (
+                <View style={[styles.itemComp, styles.itemSobra]}>
+                  <Text style={styles.itemCompCodigo}>{item.codigo}</Text>
+                  <Text style={styles.itemCompDetalle}>escaneado: {item.escaneado}</Text>
+                </View>
+              )}
+              style={styles.listaComp}
+            />
+          </View>
+        )}
+
+        <TouchableOpacity style={styles.botonReset} onPress={resetearComparacion}>
+          <Text style={styles.botonTexto}>Resetear</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -178,12 +326,24 @@ export default function App() {
         </View>
       </View>
 
-      <TouchableOpacity
-        style={styles.botonEscanear}
-        onPress={() => setEscaneando(true)}
-      >
-        <Text style={styles.botonTexto}>Escanear</Text>
-      </TouchableOpacity>
+      <View style={styles.botonesRow}>
+        <TouchableOpacity
+          style={styles.botonEscanear}
+          onPress={() => setEscaneando(true)}
+        >
+          <Text style={styles.botonTexto}>Escanear</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.botonComparar, cargandoComparacion && styles.botonDeshabilitado]}
+          onPress={iniciarComparacion}
+          disabled={cargandoComparacion}
+        >
+          <Text style={styles.botonTexto}>
+            {cargandoComparacion ? 'Cargando...' : 'Comparar'}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <Text style={styles.historialTitulo}>Ultimos escaneos:</Text>
       <FlatList
@@ -239,16 +399,37 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 20,
   },
+  botonesRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginVertical: 16,
+  },
   botonEscanear: {
     backgroundColor: '#00d4ff',
-    paddingVertical: 18,
-    paddingHorizontal: 60,
-    borderRadius: 16,
-    marginVertical: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 14,
+  },
+  botonComparar: {
+    backgroundColor: '#9b59b6',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 14,
+  },
+  botonDeshabilitado: {
+    backgroundColor: '#666',
+  },
+  botonReset: {
+    backgroundColor: '#e74c3c',
+    paddingVertical: 16,
+    paddingHorizontal: 50,
+    borderRadius: 14,
+    marginTop: 16,
+    marginBottom: 40,
   },
   botonTexto: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'center',
   },
@@ -312,5 +493,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     marginLeft: 10,
+  },
+  seccion: {
+    width: '100%',
+    marginBottom: 12,
+  },
+  seccionTitulo: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#eee',
+    marginBottom: 6,
+  },
+  listaComp: {
+    maxHeight: 150,
+  },
+  itemComp: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginBottom: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  itemOk: {
+    backgroundColor: '#1a3a1a',
+  },
+  itemFalta: {
+    backgroundColor: '#3a1a1a',
+  },
+  itemSobra: {
+    backgroundColor: '#3a3a1a',
+  },
+  itemCompCodigo: {
+    color: '#eee',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  itemCompDetalle: {
+    color: '#888',
+    fontSize: 11,
   },
 });

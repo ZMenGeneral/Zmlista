@@ -22,6 +22,7 @@ from typing import Optional
 import uvicorn
 
 import database
+import comparar_factura
 
 app = FastAPI(title='Servidor de Escaneo')
 
@@ -159,6 +160,21 @@ async def cargar_piezas(data: dict):
     n = database.cargar_piezas(mapeos)
     print(f'  [PIEZAS] Cargadas {consola_verde(str(n))} piezas')
     return {'ok': True, 'insertadas': n}
+
+
+@app.post('/comparar')
+async def comparar(data: dict):
+    """Recibe la ruta de un PDF de factura y devuelve sus items."""
+    ruta = str(data.get('ruta', '')).strip()
+    if not ruta or not os.path.exists(ruta):
+        return {'error': 'Archivo no encontrado'}
+    try:
+        resultado = comparar_factura.extraer_items_factura(ruta)
+        n = len(resultado['items'])
+        print(f'  [FACTURA] {consola_cyan(resultado["factura"])} → {n} items')
+        return resultado
+    except Exception as e:
+        return {'error': str(e)}
 
 
 @app.get('/')
