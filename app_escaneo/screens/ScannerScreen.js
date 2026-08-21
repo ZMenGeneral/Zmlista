@@ -62,7 +62,7 @@ export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codi
         style={styles.camera}
         onBarcodeScanned={puedeEscanear ? handleBarcodeScanned : undefined}
         barcodeScannerSettings={{
-          barcodeTypes: ['code128', 'code39', 'ean13', 'upc_a', 'qr'],
+          barcodeTypes: ['code128', 'code39', 'ean13', 'upc_a'],
         }}
       >
         <View style={styles.overlay}>
