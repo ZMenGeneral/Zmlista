@@ -38,7 +38,7 @@ def _agrupar_lineas(words):
 
 def _norm(t):
     return t.upper().replace('Ó', 'O').replace('Í', 'I').replace('Á', 'A') \
-             .replace('\ufffd', '').strip()
+             .replace('\ufffd', '').replace('?', '').strip()
 
 
 def extraer_numero_factura(nombre_archivo):
@@ -70,7 +70,7 @@ def extraer_items_factura(ruta_pdf):
                             columnas['codigo'] = w['x0']
                         elif t in ('DESCRIPCION', 'DESCRIP', 'DESC', 'PRODUCTO', 'NOMBRE'):
                             columnas['desc'] = w['x0']
-                        elif t in ('CANT', 'CANTIDAD', 'UNID', 'UNIDADES', 'QTY'):
+                        elif t in ('CANT', 'CANT.', 'CANTIDAD', 'UNID', 'UNIDADES', 'QTY'):
                             columnas['cant'] = w['x0']
                     if 'codigo' in columnas:
                         continue
