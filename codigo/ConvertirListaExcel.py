@@ -89,12 +89,36 @@ def excel_a_pdf(excel_path):
 
 
 def parse_number(value):
-    """Convierte '218,62' -> 218.62  y  '1.456,00' -> 1456.0. None si no es numero."""
+    """Convierte un numero en texto a float, detectando el formato.
+
+    Soporta formato europeo ('1.456,00' -> 1456.0), formato US
+    ('1,456.50' -> 1456.5) y decimales simples ('40.66' -> 40.66,
+    '38,5' -> 38.5). Devuelve None si no es un numero valido.
+    Esto corrige el bug anterior donde '40.66' se convertia en 4066."""
     if not value or not value.strip():
         return None
-    clean = value.strip().replace('.', '').replace(',', '.')
+    s = value.strip().replace('Bs', '').replace('$', '').replace(' ', '')
+    if not s:
+        return None
+
+    has_dot = '.' in s
+    has_comma = ',' in s
+
+    if has_dot and has_comma:
+        # Ambos separadores: decidir por el ultimo (decimal).
+        if s.rfind('.') > s.rfind(','):
+            # US: '1,456.50' -> separador de miles = ','; decimal = '.'
+            s = s.replace(',', '')
+        else:
+            # Europeo: '1.456,00' -> separador de miles = '.'; decimal = ','
+            s = s.replace('.', '').replace(',', '.')
+    elif has_comma:
+        # Solo comas: '38,5' o '38,50' -> decimal
+        s = s.replace(',', '.')
+    # si solo hay punto, '40.66' se usa tal cual (ya es decimal)
+
     try:
-        return float(clean)
+        return float(s)
     except ValueError:
         return None
 
@@ -108,12 +132,14 @@ def parse_monto(value):
     if not s:
         return None
     if ',' in s and '.' in s:
-        s = s.replace('.', '').replace(',', '.')
+        if s.rfind('.') > s.rfind(','):
+            s = s.replace(',', '')          # US: '1,456.50'
+        else:
+            s = s.replace('.', '').replace(',', '.')   # Europeo: '1.456,50'
     elif ',' in s:
         s = s.replace(',', '.')
     try:
-        v = float(s)
-        return v
+        return float(s)
     except ValueError:
         return None
 
@@ -253,7 +279,7 @@ def _fill_sheet(sheet_data, filas, string_idx, specs, borde_mapa=None):
             v = cell.find(f'{{{NS}}}v')
             if v is None:
                 v = ET.SubElement(cell, f'{{{NS}}}v')
-            v.text = repr(valor)
+            v.text = repr(round(valor, 2))
 
     for i, r in enumerate(filas):
         num = 13 + i
@@ -364,10 +390,7 @@ def _estilos_borde(sheet_data, styles_data):
 
 
 def _formato_bs(styles_data):
-    """Cambia el formato de número de celdas de precio para usar formato venezolano:
-    #.##0,00 (coma decimal, punto de miles) en lugar de #,##0.00 (formato US).
-    Agrega un numFmt personalizado (numFmtId=165) y actualiza los estilos
-    que usan numFmtId=4 (built-in #,##0.00) para usar el nuevo formato."""
+    """Cambia el formato de número a venezolano: #.##0,00 (coma decimal, punto de miles)."""
     root = ET.fromstring(styles_data)
 
     numfmts = root.find(f'{{{NS}}}numFmts')
@@ -383,7 +406,7 @@ def _formato_bs(styles_data):
     if not ya_existe:
         nf = ET.SubElement(numfmts, f'{{{NS}}}numFmt')
         nf.set('numFmtId', '165')
-        nf.set('formatCode', '#,##0.00')
+        nf.set('formatCode', '#.##0,##')
         numfmts.set('count', str(sum(1 for _ in numfmts)))
 
     cellxfs = None
@@ -592,7 +615,7 @@ def main_lista_bs():
 
     for r in rows:
         if r['precio'] is not None:
-            r['precio'] = round(r['precio'] * z, 2)
+            r['precio'] = fmt_monto(round(r['precio'] * z, 2))
 
     fecha = date.today().strftime('%d/%m/%Y')
     x = 450 * z
@@ -605,15 +628,14 @@ def main_lista_bs():
         (3, 'desc', 's'),
         (4, 'modelo', 's'),
         (5, 'marca', 's'),
-        (6, 'precio', 'n'),
+        (6, 'precio', 's'),
         (7, 'cant', 'n'),
     ]
 
     nombre = 'LISTA ZM BS ' + date.today().strftime('%d-%m-%Y') + '.xlsx'
     os.makedirs(CARPETA_SALIDAS, exist_ok=True)
     out = os.path.join(CARPETA_SALIDAS, nombre)
-    out = build_from_base(rows, base_path, out, reemplazos, specs, autoborder=True,
-                          formato_bs=True)
+    out = build_from_base(rows, base_path, out, reemplazos, specs, autoborder=True)
 
     print('-' * 60)
     print(consola.verde(f'  OK: {len(rows)} productos x {z} -> {out}'))
@@ -710,7 +732,7 @@ def _main_lista():
             out = os.path.join(CARPETA_SALIDAS, nombre)
 
         out = build_from_base(rows, base_path, out, reemplazos, specs,
-                              autoborder=True, formato_bs=True)
+                              autoborder=True)
         print(consola.verde(f'  OK: {total_parse} lineas -> {len(rows)} productos '
                             f'(se quitaron {removed} con existencia 0) -> {out}'))
         pdf = excel_a_pdf(out)
@@ -756,8 +778,20 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
     try:
-        input('Presiona Enter para cerrar...')
-    except EOFError:
-        pass
+        main()
+    except Exception:
+        import traceback
+        print()
+        print(consola.rojo('  (ERROR FATAL) El programa tuvo un problema:'))
+        traceback.print_exc()
+        print()
+        try:
+            input('  Presiona Enter para cerrar...')
+        except EOFError:
+            pass
+    else:
+        try:
+            input('Presiona Enter para cerrar...')
+        except EOFError:
+            pass

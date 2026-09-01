@@ -148,119 +148,139 @@ def main():
         mostrar_menu()
         opcion = preguntar('  Selecciona una opcion: ').strip()
 
-        if opcion == '1':
-            consola.limpiar()
-            conversor.main()
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '2':
-            consola.limpiar()
-            conversor.main_lista_bs()
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '3':
-            consola.limpiar()
-            verificador.main()
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '4':
-            consola.limpiar()
-            guias.main()
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '5':
-            consola.limpiar()
-            analizador.main()
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '6':
-            consola.limpiar()
-            mensajes.main()
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '7':
-            consola.limpiar()
-            comparador.main()
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '8':
-            consola.limpiar()
-            novendidos.main()
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '9':
-            consola.limpiar()
-            novendidos.consultar_historial()
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '10':
-            consola.limpiar()
-            facturas.main()
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '11':
-            consola.limpiar()
-            import subprocess as _sp
-            machine_path = _sp.check_output(
-                ['reg', 'query', r'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment',
-                 '/v', 'Path'], text=True, creationflags=_sp.CREATE_NO_WINDOW)
-            user_path = _sp.check_output(
-                ['reg', 'query', r'HKCU\Environment', '/v', 'Path'], text=True,
-                creationflags=_sp.CREATE_NO_WINDOW)
-            def _extract(reg_output):
-                for line in reg_output.splitlines():
-                    if 'Path' in line and 'REG' in line:
-                        return line.split('REG_EXPAND_SZ', 1)[-1].strip()
-                return ''
-            full_path = _extract(machine_path) + ';' + _extract(user_path)
-            os.environ['PATH'] = full_path
-            os.environ['PATHEXT'] = os.environ.get('PATHEXT', '') + ';.CMD;.PS1'
-
-            sys.path.insert(0, os.path.join(RAIZ, 'servidor_escaneo'))
-            try:
-                import servidor
-                ip = servidor.obtener_ip_local()
-                h = threading.Thread(
-                    target=lambda: uvicorn.run(
-                        servidor.app, host='0.0.0.0', port=8000, log_level='warning'),
-                    daemon=True)
-                h.start()
-                print()
-                print(f'  Servidor iniciado en {consola.verde(f"http://{ip}:8000")}')
-                print()
-                print('  Iniciando Expo... Escanea el QR con la app Expo Go')
-                print('-' * 55)
-                print()
-                app_dir = os.path.join(RAIZ, 'app_escaneo')
-                os.environ['REACT_NATIVE_PACKAGER_HOSTNAME'] = ip
-                _sp.run(['cmd', '/c', 'npx', 'expo', 'start'],
-                        cwd=app_dir, env=os.environ)
-            except KeyboardInterrupt:
-                print()
-                print('  Servidor detenido.')
-            except Exception as e:
-                print(f'  Error: {e}')
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '12':
-            consola.limpiar()
-            sys.path.insert(0, os.path.join(RAIZ, 'servidor_escaneo'))
-            import cargar_piezas as cp
-            cp.main()
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '55585':
-            consola.limpiar()
-            print()
-            print('  Iniciando bot de descargas (Instagram/TikTok/YouTube)...')
-            print('  Ctrl+C para volver al menu.')
-            print()
-            try:
-                import bot_telegram as bot_descargas
-                bot_descargas.main()
-            except KeyboardInterrupt:
-                print()
-                print('  Bot detenido.')
-            except SystemExit as e:
-                print(f'  El bot no pudo iniciar: {e}')
-            preguntar('\n  Presiona Enter para volver al menu...')
-        elif opcion == '13':
+        if opcion == '13':
             print()
             print('  Cerrando programa. Hasta luego!')
             break
-        else:
-            print('\n  Opcion invalida, intenta de nuevo.')
-            preguntar('  Presiona Enter para continuar...')
+
+        try:
+            _ejecutar_opcion(opcion)
+        except Exception:
+            import traceback
+            print()
+            print(consola.rojo('  (ERROR) Ocurrio un problema en esta opcion:'))
+            traceback.print_exc()
+            preguntar('\n  Presiona Enter para volver al menu...')
     print()
 
 
+def _ejecutar_opcion(opcion):
+    if opcion == '1':
+        consola.limpiar()
+        conversor.main()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '2':
+        consola.limpiar()
+        conversor.main_lista_bs()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '3':
+        consola.limpiar()
+        verificador.main()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '4':
+        consola.limpiar()
+        guias.main()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '5':
+        consola.limpiar()
+        analizador.main()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '6':
+        consola.limpiar()
+        mensajes.main()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '7':
+        consola.limpiar()
+        comparador.main()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '8':
+        consola.limpiar()
+        novendidos.main()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '9':
+        consola.limpiar()
+        novendidos.consultar_historial()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '10':
+        consola.limpiar()
+        facturas.main()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '11':
+        consola.limpiar()
+        import subprocess as _sp
+        machine_path = _sp.check_output(
+            ['reg', 'query', r'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment',
+             '/v', 'Path'], text=True, creationflags=_sp.CREATE_NO_WINDOW)
+        user_path = _sp.check_output(
+            ['reg', 'query', r'HKCU\Environment', '/v', 'Path'], text=True,
+            creationflags=_sp.CREATE_NO_WINDOW)
+        def _extract(reg_output):
+            for line in reg_output.splitlines():
+                if 'Path' in line and 'REG' in line:
+                    return line.split('REG_EXPAND_SZ', 1)[-1].strip()
+            return ''
+        full_path = _extract(machine_path) + ';' + _extract(user_path)
+        os.environ['PATH'] = full_path
+        os.environ['PATHEXT'] = os.environ.get('PATHEXT', '') + ';.CMD;.PS1'
+
+        sys.path.insert(0, os.path.join(RAIZ, 'servidor_escaneo'))
+        try:
+            import servidor
+            ip = servidor.obtener_ip_local()
+            h = threading.Thread(
+                target=lambda: uvicorn.run(
+                    servidor.app, host='0.0.0.0', port=8000, log_level='warning'),
+                daemon=True)
+            h.start()
+            print()
+            print(f'  Servidor iniciado en {consola.verde(f"http://{ip}:8000")}')
+            print()
+            print('  Iniciando Expo... Escanea el QR con la app Expo Go')
+            print('-' * 55)
+            print()
+            app_dir = os.path.join(RAIZ, 'app_escaneo')
+            os.environ['REACT_NATIVE_PACKAGER_HOSTNAME'] = ip
+            _sp.run(['cmd', '/c', 'npx', 'expo', 'start'],
+                    cwd=app_dir, env=os.environ)
+        except KeyboardInterrupt:
+            print()
+            print('  Servidor detenido.')
+        except Exception as e:
+            print(f'  Error: {e}')
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '12':
+        consola.limpiar()
+        sys.path.insert(0, os.path.join(RAIZ, 'servidor_escaneo'))
+        import cargar_piezas as cp
+        cp.main()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '55585':
+        consola.limpiar()
+        print()
+        print('  Iniciando bot de descargas (Instagram/TikTok/YouTube)...')
+        print('  Ctrl+C para volver al menu.')
+        print()
+        try:
+            import bot_telegram as bot_descargas
+            bot_descargas.main()
+        except KeyboardInterrupt:
+            print()
+            print('  Bot detenido.')
+        except SystemExit as e:
+            print(f'  El bot no pudo iniciar: {e}')
+        preguntar('\n  Presiona Enter para volver al menu...')
+    else:
+        print('\n  Opcion invalida, intenta de nuevo.')
+        preguntar('  Presiona Enter para continuar...')
+
+
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception:
+        import traceback
+        print()
+        print(consola.rojo('  (ERROR FATAL) El programa tuvo un problema:'))
+        traceback.print_exc()
+        print()
+        input('  Presiona Enter para cerrar...')
