@@ -33,6 +33,7 @@ import MensajesRapidos as mensajes
 import CompararListas as comparador
 import CompararVentas as novendidos
 import AnalizarFacturas as facturas
+import HistorialPiezasDanadas as historial_danadas
 import consola
 import threading
 import uvicorn
@@ -137,7 +138,8 @@ def mostrar_menu():
     print('  10. Analizar facturas (PDF)')
     print('  11. Servidor de escaneo (movil)')
     print('  12. Cargar piezas (Excel)')
-    print('  13. Salir')
+    print('  13. Historial de piezas danadas')
+    print('  14. Salir')
     print('=' * 52)
     print()
 
@@ -148,7 +150,7 @@ def main():
         mostrar_menu()
         opcion = preguntar('  Selecciona una opcion: ').strip()
 
-        if opcion == '13':
+        if opcion == '14':
             print()
             print('  Cerrando programa. Hasta luego!')
             break
@@ -253,6 +255,10 @@ def _ejecutar_opcion(opcion):
         sys.path.insert(0, os.path.join(RAIZ, 'servidor_escaneo'))
         import cargar_piezas as cp
         cp.main()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '13':
+        consola.limpiar()
+        historial_danadas.main()
         preguntar('\n  Presiona Enter para volver al menu...')
     elif opcion == '55585':
         consola.limpiar()

@@ -109,3 +109,40 @@ def listar_meses_no_vendidos():
             vistos.add(m)
             meses.append(m)
     return meses
+
+
+# ----------------------------------------------------------------
+# Historial de piezas danadas
+# ----------------------------------------------------------------
+
+def insertar_pieza_danada(datos):
+    """Inserta un registro nuevo en historial_piezas_danadas."""
+    datos = dict(datos)
+    datos['creado_en'] = datetime.now(timezone.utc).isoformat()
+    return _request('POST', 'historial_piezas_danadas', '',
+                    cuerpo=datos, prefer='return=minimal')
+
+
+def listar_piezas_danadas():
+    """Devuelve todos los registros de piezas danadas, mas recientes primero."""
+    return _request('GET', 'historial_piezas_danadas',
+                    '?select=*&order=creado_en.desc') or []
+
+
+def buscar_piezas_danadas(campo, valor):
+    """Busca piezas danadas por codigo, vendedor o cliente (ILIKE)."""
+    return _request('GET', 'historial_piezas_danadas',
+                    f'?select=*&{campo}=ilike.{urllib.parse.quote("*" + valor + "*")}&order=creado_en.desc') or []
+
+
+def obtener_pieza_danada(pieza_id):
+    """Devuelve un registro por su id."""
+    resultados = _request('GET', 'historial_piezas_danadas',
+                          f'?select=*&id=eq.{pieza_id}')
+    return resultados[0] if resultados else None
+
+
+def eliminar_pieza_danada(pieza_id):
+    """Elimina un registro por su id."""
+    _request('DELETE', 'historial_piezas_danadas',
+             f'?id=eq.{pieza_id}', prefer='return=minimal')
