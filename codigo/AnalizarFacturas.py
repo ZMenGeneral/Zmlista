@@ -71,6 +71,55 @@ def _norm(t):
              .replace('\ufffd', '').strip()
 
 
+def obtener_facturas_anio(anio=None, buscar=None):
+    """Escanea la ruta de red y devuelve TODAS las facturas del anio (o del anio
+    actual si no se especifica). Cada elemento es dict con keys:
+    ruta, nombre, factura, fecha.
+    Si buscar se proporciona (ej: 'N12345' o numero), filtra por nombre/factura."""
+    anio = anio or date.today().year
+    buscar = (buscar or '').strip()
+    buscar_norm = _norm(buscar)
+
+    carpeta_anio = os.path.join(RUTA_BASE, str(anio))
+    if not os.path.isdir(carpeta_anio):
+        return []
+
+    pdfs = []
+    for mes_nombre in MESES.values():
+        carpeta_mes = os.path.join(carpeta_anio, mes_nombre)
+        if not os.path.isdir(carpeta_mes):
+            continue
+        for dia_carpeta in os.listdir(carpeta_mes):
+            carpeta_dia = os.path.join(carpeta_mes, dia_carpeta)
+            if not os.path.isdir(carpeta_dia):
+                continue
+            # fecha de la carpeta 'dd-mm'
+            fecha_dia = None
+            try:
+                dd, mm = dia_carpeta.split('-')
+                indice = list(MESES.values()).index(mes_nombre) + 1
+                if int(mm) == indice:
+                    fecha_dia = date(anio, int(mm), int(dd))
+            except (ValueError, TypeError):
+                fecha_dia = None
+            for archivo in os.listdir(carpeta_dia):
+                if not archivo.lower().endswith('.pdf'):
+                    continue
+                if buscar_norm and buscar_norm not in _norm(archivo) \
+                        and buscar_norm not in _norm(extraer_numero_factura(archivo)):
+                    continue
+                ruta = os.path.join(carpeta_dia, archivo)
+                numero = extraer_numero_factura(archivo)
+                pdfs.append({
+                    'ruta': ruta,
+                    'nombre': archivo,
+                    'factura': numero,
+                    'fecha': fecha_dia if fecha_dia else dia_carpeta,
+                })
+    pdfs.sort(key=lambda p: _numero_factura_orden(p['factura']))
+    return pdfs
+
+
 def obtener_facturas_recientes():
     """Escanea la ruta de red y devuelve lista de PDFs de los ultimos 5 dias
     del mes y anio actuales. Cada elemento es dict con keys: ruta, nombre, factura."""

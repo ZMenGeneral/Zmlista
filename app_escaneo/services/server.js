@@ -120,12 +120,13 @@ export const asociarBarra = async (codigoBarra, codigoPieza) => {
   return response.json();
 };
 
-export const compararFactura = async (rutaPdf) => {
+export const compararFactura = async (rutas) => {
   if (!servidorIp) throw new Error('No conectado al servidor');
+  const lista = Array.isArray(rutas) ? rutas : [rutas];
   const response = await fetch(`http://${servidorIp}:8000/comparar`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ruta: rutaPdf }),
+    body: JSON.stringify({ rutas: lista }),
   });
   return response.json();
 };
@@ -146,8 +147,12 @@ export const borrarUltimo = async () => {
   return response.json();
 };
 
-export const listarFacturas = async () => {
+export const listarFacturas = async (buscar = '', anio = null) => {
   if (!servidorIp) throw new Error('No conectado al servidor');
-  const response = await fetch(`http://${servidorIp}:8000/facturas`);
+  let params = '';
+  if (buscar) params += `buscar=${encodeURIComponent(buscar)}`;
+  if (anio) params += (params ? '&' : '') + `anio=${encodeURIComponent(anio)}`;
+  if (params) params = '?' + params;
+  const response = await fetch(`http://${servidorIp}:8000/facturas${params}`);
   return response.json();
 };

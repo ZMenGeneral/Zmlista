@@ -499,6 +499,13 @@ def fmt_monto(v):
     return s.replace(',', 'X').replace('.', ',').replace('X', '.')
 
 
+def fmt_monto_precio(v):
+    """Formatea un precio con separador de miles español y SIEMPRE 2 decimales:
+    17325.0 -> '17.325,00'."""
+    s = f"{v:,.2f}"
+    return s.replace(',', 'X').replace('.', ',').replace('X', '.')
+
+
 def ask_excel_dialog():
     import tkinter as tk
     from tkinter import filedialog
@@ -615,7 +622,7 @@ def main_lista_bs():
 
     for r in rows:
         if r['precio'] is not None:
-            r['precio'] = fmt_monto(round(r['precio'] * z, 2))
+            r['precio'] = fmt_monto_precio(round(r['precio'] * z, 2))
 
     fecha = date.today().strftime('%d/%m/%Y')
     x = 450 * z

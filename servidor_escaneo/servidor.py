@@ -168,15 +168,37 @@ async def cargar_piezas(data: dict):
 
 @app.post('/comparar')
 async def comparar(data: dict):
-    """Recibe la ruta de un PDF de factura y devuelve sus items."""
-    ruta = str(data.get('ruta', '')).strip()
-    if not ruta or not os.path.exists(ruta):
+    """Recibe la(s) ruta(s) de PDF(s) de factura y devuelve sus items.
+    Si llegan varias rutas (ruta o rutas), las combina en un solo resultado
+    (sumando cantidades por codigo) para comparar contra el escaneo."""
+    rutas = data.get('rutas') or None
+    if not rutas:
+        ruta = str(data.get('ruta', '')).strip()
+        rutas = [ruta] if ruta else []
+    rutas = [r for r in rutas if r and os.path.exists(r)]
+    if not rutas:
         return {'error': 'Archivo no encontrado'}
     try:
-        resultado = comparar_factura.extraer_items_factura(ruta)
-        n = len(resultado['items'])
-        print(f'  [FACTURA] {consola_cyan(resultado["factura"])} → {n} items')
-        return resultado
+        comb_items = {}
+        numeros = []
+        for r in rutas:
+            resultado = comparar_factura.extraer_items_factura(r)
+            num = resultado.get('factura')
+            if num:
+                numeros.append(num)
+            for it in resultado.get('items', []):
+                cod = it.get('codigo')
+                if cod not in comb_items:
+                    comb_items[cod] = dict(it)
+                else:
+                    comb_items[cod]['cant'] = comb_items[cod].get('cant', 0) \
+                        + it.get('cant', 0)
+        items = list(comb_items.values())
+        etiqueta = ', '.join(numeros) if numeros else \
+            ', '.join(os.path.basename(r) for r in rutas)
+        print(f'  [FACTURA] {consola_cyan(etiqueta)}'
+              f' -> {len(items)} items ({len(rutas)} nota(s))')
+        return {'factura': etiqueta, 'items': items, 'notas': len(rutas)}
     except Exception as e:
         return {'error': str(e)}
 
@@ -200,11 +222,13 @@ async def borrar_ultimo():
 
 
 @app.get('/facturas')
-async def listar_facturas():
-    """Lista las facturas disponibles en la carpeta de red."""
+async def listar_facturas(buscar: Optional[str] = None, anio: Optional[int] = None):
+    """Lista las facturas disponibles en la carpeta de red.
+    Devuelve TODAS las del anio (actual por defecto) con opcion de buscar
+    por numero de factura/nota (ej: N12345) y de indicar otro anio."""
     try:
         import AnalizarFacturas
-        pdfs = AnalizarFacturas.obtener_facturas_recientes()
+        pdfs = AnalizarFacturas.obtener_facturas_anio(anio=anio, buscar=buscar)
         return {'facturas': pdfs}
     except Exception as e:
         return {'error': str(e), 'facturas': []}

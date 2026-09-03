@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Vibration } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Audio } from 'expo-av';
+
+const beepWav = require('../assets/beep.wav');
 
 export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codigoPendiente }) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -8,6 +11,7 @@ export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codi
   const [contador, setContador] = useState(0);
   const [puedeEscanear, setPuedeEscanear] = useState(false);
   const procesandoRef = useRef(false);
+  const sonidoRef = useRef(null);
 
   useEffect(() => {
     if (permission && !permission.granted) {
@@ -15,12 +19,23 @@ export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codi
     }
   }, [permission]);
 
+  const reproducirBeep = useCallback(async () => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(beepWav);
+      sonidoRef.current = sound;
+      await sound.playAsync();
+    } catch (e) {
+      // silencio si no se puede reproducir
+    }
+  }, []);
+
   const handleBarcodeScanned = useCallback(({ type, data }) => {
     if (procesandoRef.current) return;
     procesandoRef.current = true;
     setPuedeEscanear(false);
 
     Vibration.vibrate(100);
+    reproducirBeep();
     setUltimoCodigo(data);
     setContador(c => c + 1);
     onEscaneado(data);
@@ -28,7 +43,7 @@ export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codi
     setTimeout(() => {
       procesandoRef.current = false;
     }, 1000);
-  }, [onEscaneado]);
+  }, [onEscaneado, reproducirBeep]);
 
   const capturar = () => {
     setPuedeEscanear(true);

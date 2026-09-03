@@ -12,7 +12,7 @@ import re
 import sys
 
 import consola
-from supabase_client import listar_guias, marcar_cambiadas, SupabaseError
+from supabase_client import listar_guias, marcar_cambiadas, upsert_guia, SupabaseError
 
 ANSI = re.compile(r'\x1b\[[0-9;]*m')
 
@@ -56,35 +56,22 @@ def _solo_fecha(s):
     return s
 
 
-def _fmt_actualizado(s):
-    if not s:
-        return '-'
-    s = s.strip().replace('T', ' ').split('+')[0].split('.')[0]
-    partes = s.split(' ')
-    if len(partes) < 2:
-        return s
-    fecha = partes[0].split('-')
-    fecha_s = f'{fecha[2]}/{fecha[1]}/{fecha[0]}' if len(fecha) == 3 else partes[0]
-    return fecha_s + ' ' + partes[1][:5]
-
-
 def _tabla(guias):
     lineas = []
     lineas.append(_s('NUM', 4) + ' ' + _s('GUIA', 10) + ' ' + _s('FECHA ENVIO', 12) + ' ' +
                   _s('CLIENTE', 38) + ' ' + _s('ESTADO', 20) + ' ' + _s('FECHA RETIRO', 12) + ' ' +
-                  _s('ULT. ACTUALIZ.', 18) + ' ' + _s('RET', 4) + ' ' + _s('CAM', 4))
-    lineas.append('-' * 130)
+                  _s('RET', 4) + ' ' + _s('CAM', 4))
+    lineas.append('-' * 110)
     for i, g in enumerate(guias, 1):
         ret = consola.verde('SI') if g.get('retirada') else consola.rojo('NO')
         cam = consola.verde('SI') if g.get('fecha_cambiada') else consola.rojo('NO')
         guia = consola.naranja(g.get('guia', ''))
         fenv = consola.naranja(_solo_fecha(g.get('fecha_envio')))
         fret = consola.naranja(_solo_fecha(g.get('fecha_entrega')))
-        fact = consola.naranja(_fmt_actualizado(g.get('actualizado_en')))
         linea = (_s(i, 4) + ' ' + _s(guia, 10) + ' ' + _s(fenv, 12) + ' ' +
                  _s(g.get('casillero') or g.get('destino') or '', 38) + ' ' +
                  _s(_estado_corto(g.get('estado') or ''), 20) + ' ' +
-                 _s(fret, 12) + ' ' + _s(fact, 18) + ' ' + _s(ret, 4) + ' ' + _s(cam, 4))
+                 _s(fret, 12) + ' ' + _s(ret, 4) + ' ' + _s(cam, 4))
         lineas.append(linea)
     return lineas
 
@@ -124,6 +111,53 @@ def _enter():
         pass
 
 
+def _actualizar_pendientes(guias):
+    """Consulta la API de ZOOM y actualiza el estado de las guias pendientes
+    (no retiradas/recibidas). Devuelve la lista de guias ya actualizada.
+    No toca las guias ya retiradas/recibidas."""
+    pendientes = [g for g in guias if not g.get('retirada')]
+    if not pendientes:
+        return guias
+
+    print()
+    print(consola.cian(f'  Actualizando estado de {len(pendientes)} guia(s) pendiente(s)...'))
+
+    try:
+        import VerificarEnvios as verif
+    except Exception as e:
+        print(consola.amarillo(f'  (No se pudo cargar el consultor de ZOOM: {e})'))
+        return guias
+
+    cambiadas = 0
+    errores = 0
+    for i, g in enumerate(pendientes, 1):
+        guia = g.get('guia')
+        print(f'    [{i}/{len(pendientes)}] Consultando {guia} ...')
+        try:
+            data = verif.consultar(guia)
+            cod = (data or {}).get('codrespuesta') or ''
+            if cod != 'COD_000':
+                print(f'    Respuesta de ZOOM: {data.get("mensaje") or cod}')
+                errores += 1
+                continue
+            nuevos = verif.extraer_datos_guia(guia, data)
+            upsert_guia(nuevos)
+            for existente in guias:
+                if existente.get('guia') == guia:
+                    existente.update(nuevos)
+            if nuevos.get('retirada'):
+                cambiadas += 1
+                print(consola.verde('    -> Ahora retirada/recibida.'))
+        except Exception as e:
+            print(f'    ERROR: {e}')
+            errores += 1
+
+    print()
+    print(consola.verde(f'  Actualizadas {len(pendientes) - errores} guia(s), '
+                        f'{cambiadas} ya retirada(s). Errores: {errores}'))
+    return guias
+
+
 def _mostrar_guias(guias):
     total = len(guias)
     marcadas = sum(1 for g in guias if g.get('fecha_cambiada'))
@@ -148,6 +182,8 @@ def main():
         print('  No hay guias almacenadas todavia.')
         print('  Analiza algunas guias en la opcion 3 (Verificar envios ZOOM) para guardarlas.')
         return
+
+    guias = _actualizar_pendientes(guias)
 
     while True:
         consola.limpiar()

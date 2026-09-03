@@ -160,11 +160,13 @@ export default function App() {
     setSeleccionandoFactura(true);
   };
 
-  const facturaSeleccionada = async (rutaPdf, numeroFactura) => {
+  const facturaSeleccionada = async (facturasSel) => {
     setSeleccionandoFactura(false);
     setCargandoComparacion(true);
     try {
-      const resultado = await compararFactura(rutaPdf);
+      const listaNotas = Array.isArray(facturasSel) ? facturasSel : [facturasSel];
+      const rutas = listaNotas.map(f => f.ruta).filter(Boolean);
+      const resultado = await compararFactura(rutas);
       if (resultado.error) {
         Alert.alert('Error', resultado.error);
         setCargandoComparacion(false);
@@ -194,8 +196,10 @@ export default function App() {
           sobran.push({ codigo: cod, escaneado: escaneados[cod] });
         }
       });
+      const etiquetaNotas = listaNotas.map(f => f.factura || f.nombre || f.ruta).join(', ');
       setResultadoComparacion({
-        factura: resultado.factura,
+        factura: resultado.factura || etiquetaNotas,
+        notas: listaNotas.length > 1 ? listaNotas.length + ' notas combinadas' : '',
         coinciden,
         faltan,
         sobran,
@@ -284,6 +288,9 @@ export default function App() {
         <StatusBar style="light" />
         <Text style={styles.titulo}>Resultado</Text>
         <Text style={styles.conectado}>Factura: {resultadoComparacion.factura}</Text>
+        {resultadoComparacion.notas ? (
+          <Text style={styles.subtituloNota}>{resultadoComparacion.notas}</Text>
+        ) : null}
 
         {resultadoComparacion.coinciden.length > 0 && (
           <View style={styles.seccion}>
@@ -430,6 +437,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#00ff88',
     marginBottom: 20,
+  },
+  subtituloNota: {
+    fontSize: 12,
+    color: '#9b59b6',
+    marginBottom: 20,
+    fontWeight: 'bold',
   },
   botonConectar: {
     backgroundColor: '#0f3460',
