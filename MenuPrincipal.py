@@ -13,7 +13,9 @@ Menu tipo do-while con 6 opciones.
     Opcion 9: No vendidos: historial por mes (Supabase)
     Opcion 10: Analizar facturas (PDFs de facturas de compra)
     Opcion 11: Servidor de escaneo de codigos de barras
-    Opcion 12: Salir / cerrar el programa
+    Opcion 12: Historico de todas nuestras piezas (catalogo con marcas)
+    Opcion 13: Historial de piezas danadas
+    Opcion 14: Salir / cerrar el programa
 
 Al iniciar revisa GitHub automaticamente: si hay actualizaciones,
 descarga la version nueva y reinicia el programa.
@@ -34,6 +36,7 @@ import CompararListas as comparador
 import CompararVentas as novendidos
 import AnalizarFacturas as facturas
 import HistorialPiezasDanadas as historial_danadas
+import PiezasHistorico as piezas_historico
 import consola
 import threading
 import uvicorn
@@ -137,7 +140,7 @@ def mostrar_menu():
     print('  9. No vendidos: historial por mes')
     print('  10. Analizar facturas (PDF)')
     print('  11. Servidor de escaneo (movil)')
-    print('  12. Cargar piezas (Excel)')
+    print('  12. Historico de todas nuestras piezas')
     print('  13. Historial de piezas danadas')
     print('  14. Salir')
     print('=' * 52)
@@ -252,9 +255,7 @@ def _ejecutar_opcion(opcion):
         preguntar('\n  Presiona Enter para volver al menu...')
     elif opcion == '12':
         consola.limpiar()
-        sys.path.insert(0, os.path.join(RAIZ, 'servidor_escaneo'))
-        import cargar_piezas as cp
-        cp.main()
+        piezas_historico.main()
         preguntar('\n  Presiona Enter para volver al menu...')
     elif opcion == '13':
         consola.limpiar()
