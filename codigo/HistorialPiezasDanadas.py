@@ -682,6 +682,7 @@ def reporte_por_marca():
             'cliente': d.get('cliente') or '',
             'vendedor': d.get('vendedor') or '',
             'fecha': _fecha_corta(d.get('creado_en')),
+            'imagenes': d.get('imagenes') or [],
         }
         data = por_marca.setdefault(marca, {'registros': [], 'total_piezas': 0})
         data['registros'].append(registro)
@@ -723,7 +724,8 @@ def reporte_por_marca():
 
 
 def _guardar_reporte_marca(ordenadas, total_piezas, total_registros):
-    """Guarda el reporte por marca en un archivo TXT/Markdown en salidas."""
+    """Guarda el reporte por marca en Excel: una hoja por marca + resumen.
+    Cada registro incluye la cantidad y las rutas de sus imagenes."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
@@ -733,50 +735,76 @@ def _guardar_reporte_marca(ordenadas, total_piezas, total_registros):
     fecha = datetime.now().strftime('%d-%m-%Y')
     out = os.path.join(CARPETA_SALIDAS, f'Reporte Piezas Danadas por Marca {fecha}.xlsx')
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Por marca'
-    encabezados = ['MARCA', 'CODIGO', 'CANTIDAD', 'RAZON', 'CLIENTE', 'VENDEDOR', 'FECHA']
-    anchos = [20, 14, 10, 40, 22, 22, 18]
-    for col, h in enumerate(encabezados, 1):
-        cel = ws.cell(1, col, h)
-        cel.font = Font(bold=True, color='FFFFFF')
-        cel.fill = PatternFill('solid', fgColor='7B2D26')
-        cel.alignment = Alignment(horizontal='center')
+    encabezados = ['CODIGO', 'CANTIDAD', 'RAZON', 'CLIENTE', 'VENDEDOR', 'FECHA',
+                   'N° IMG', 'IMAGENES']
+    anchos = [16, 10, 40, 24, 24, 18, 8, 70]
 
-    ws2 = wb.create_sheet('Resumen por marca')
+    def _hoja_titulo(ws):
+        for col, h in enumerate(encabezados, 1):
+            cel = ws.cell(1, col, h)
+            cel.font = Font(bold=True, color='FFFFFF')
+            cel.fill = PatternFill('solid', fgColor='7B2D26')
+            cel.alignment = Alignment(horizontal='center')
+
+    def _ajustar_hoja(ws, n_filas):
+        for col, a in enumerate(anchos, 1):
+            ws.column_dimensions[get_column_letter(col)].width = a
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = f'A1:{get_column_letter(len(encabezados))}{n_filas}'
+
+    def _escribir_registro(ws, fila, marca, r):
+        ws.cell(fila, 1, r['codigo'])
+        ws.cell(fila, 2, r['cantidad'])
+        ws.cell(fila, 3, r['razon'])
+        ws.cell(fila, 4, r['cliente'])
+        ws.cell(fila, 5, r['vendedor'])
+        ws.cell(fila, 6, r['fecha'])
+        imgs = r.get('imagenes') or []
+        ws.cell(fila, 7, len(imgs))
+        if imgs:
+            cel = ws.cell(fila, 8, '; '.join(imgs))
+            cel.alignment = Alignment(vertical='top')
+
+    def _titulo_hoja_valido(nombre):
+        """El nombre de una hoja Excel maximo 31 chars y sin \\ / ? * [ ] :"""
+        nombre = str(nombre).replace('/', '-').replace('\\', '-') \
+                             .replace('?', '').replace('*', '') \
+                             .replace('[', '(').replace(']', ')') \
+                             .replace(':', '-')
+        return nombre[:31] or 'Hoja'
+
+    wb = Workbook()
+    ws_resumen = wb.active
+    ws_resumen.title = 'Resumen'
     for col, h in enumerate(['MARCA', 'TOTAL PIEZAS', 'REGISTROS'], 1):
-        cel = ws2.cell(1, col, h)
+        cel = ws_resumen.cell(1, col, h)
         cel.font = Font(bold=True, color='FFFFFF')
         cel.fill = PatternFill('solid', fgColor='1F4E78')
         cel.alignment = Alignment(horizontal='center')
+    ws_resumen.column_dimensions['A'].width = 24
+    ws_resumen.column_dimensions['B'].width = 14
+    ws_resumen.column_dimensions['C'].width = 10
+    ws_resumen.freeze_panes = 'A2'
 
-    fila = 2
-    fila2 = 2
+    fila_resumen = 2
     for marca, data in ordenadas:
-        ws2.cell(fila2, 1, marca)
-        ws2.cell(fila2, 2, data['total_piezas'])
-        ws2.cell(fila2, 3, len(data['registros']))
-        fila2 += 1
-        for r in data['registros']:
-            ws.cell(fila, 1, marca)
-            ws.cell(fila, 2, r['codigo'])
-            ws.cell(fila, 3, r['cantidad'])
-            ws.cell(fila, 4, r['razon'])
-            ws.cell(fila, 5, r['cliente'])
-            ws.cell(fila, 6, r['vendedor'])
-            ws.cell(fila, 7, r['fecha'])
-            fila += 1
+        ws_resumen.cell(fila_resumen, 1, marca)
+        ws_resumen.cell(fila_resumen, 2, data['total_piezas'])
+        ws_resumen.cell(fila_resumen, 3, len(data['registros']))
+        fila_resumen += 1
 
-    for col, a in enumerate(anchos, 1):
-        ws.column_dimensions[get_column_letter(col)].width = a
-    ws2.column_dimensions['A'].width = 20
-    ws2.column_dimensions['B'].width = 14
-    ws2.column_dimensions['C'].width = 10
-    ws.freeze_panes = 'A2'
-    ws2.freeze_panes = 'A2'
+        nombre_hoja = _titulo_hoja_valido(marca)
+        ws = wb.create_sheet(title=nombre_hoja)
+        _hoja_titulo(ws)
+        fila = 2
+        for r in data['registros']:
+            _escribir_registro(ws, fila, marca, r)
+            fila += 1
+        _ajustar_hoja(ws, fila - 1)
+
     wb.save(out)
     print(consola.verde(f'  Reporte guardado: {out}'))
+    print(consola.verde(f'  {len(ordenadas)} hoja(s) de marca + resumen generadas.'))
 
 
 # ----------------------------------------------------------------
