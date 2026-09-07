@@ -15,7 +15,8 @@ Menu tipo do-while con 6 opciones.
     Opcion 11: Servidor de escaneo de codigos de barras
     Opcion 12: Historico de todas nuestras piezas (catalogo con marcas)
     Opcion 13: Historial de piezas danadas
-    Opcion 14: Salir / cerrar el programa
+    Opcion 14: Catalogo web (servidor local + consulta al fabricante)
+    Opcion 15: Salir / cerrar el programa
 
 Al iniciar revisa GitHub automaticamente: si hay actualizaciones,
 descarga la version nueva y reinicia el programa.
@@ -37,6 +38,7 @@ import CompararVentas as novendidos
 import AnalizarFacturas as facturas
 import HistorialPiezasDanadas as historial_danadas
 import PiezasHistorico as piezas_historico
+import CatalogoWeb as catalogo_web
 import consola
 import threading
 import uvicorn
@@ -142,7 +144,8 @@ def mostrar_menu():
     print('  11. Servidor de escaneo (movil)')
     print('  12. Historico de todas nuestras piezas')
     print('  13. Historial de piezas danadas')
-    print('  14. Salir')
+    print('  14. Catalogo web')
+    print('  15. Salir')
     print('=' * 52)
     print()
 
@@ -153,7 +156,7 @@ def main():
         mostrar_menu()
         opcion = preguntar('  Selecciona una opcion: ').strip()
 
-        if opcion == '14':
+        if opcion == '15':
             print()
             print('  Cerrando programa. Hasta luego!')
             break
@@ -260,6 +263,10 @@ def _ejecutar_opcion(opcion):
     elif opcion == '13':
         consola.limpiar()
         historial_danadas.main()
+        preguntar('\n  Presiona Enter para volver al menu...')
+    elif opcion == '14':
+        consola.limpiar()
+        catalogo_web.main()
         preguntar('\n  Presiona Enter para volver al menu...')
     elif opcion == '55585':
         consola.limpiar()
