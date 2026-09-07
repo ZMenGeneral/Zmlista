@@ -605,6 +605,54 @@ def cargar_piezas_con_marca():
 # ----------------------------------------------------------------
 # OPCION 6: Reporte de piezas danadas por marca
 # ----------------------------------------------------------------
+def _obtener_marca(codigo, marca_por_codigo):
+    """Busca la marca de un codigo en el catalogo probando variaciones:
+    - Coincidencia exacta
+    - Espacios convertidos a guiones ('2C5158 020' -> '2C5158-020')
+    - Prefijo M (melling a veces no lleva la M en los anillos)
+    - Quitando prefijo M si el codigo lo tiene
+    - Solo la base del codigo (antes del espacio/guion)
+    """
+    codigo = (codigo or '').strip()
+    if not codigo:
+        return ''
+
+    if codigo in marca_por_codigo:
+        return marca_por_codigo.get(codigo, '')
+
+    variables = [codigo]
+    con_guion = codigo.replace(' ', '-')
+    variables.append(con_guion)
+    con_guion2 = codigo.replace(' ', '-').replace('- ', '-')
+    variables.append(con_guion2)
+    sin_espacios = codigo.replace(' ', '')
+    variables.append(sin_espacios)
+
+    for v in list(variables):
+        if v.upper().startswith('M') and v[1:] not in variables:
+            variables.append(v[1:])
+        if 'M' + v not in variables:
+            variables.append('M' + v)
+        partes = [p for p in v.replace('-', ' ').split() if p]
+        if partes:
+            variables.append(v[:len(partes[0])] if v.startswith(partes[0]) else partes[0])
+
+    for v in variables:
+        if v and v in marca_por_codigo:
+            return marca_por_codigo.get(v, '')
+
+    base = codigo.split()[0].split('-')[0] if codigo.split() else codigo.split('-')[0]
+    if not base:
+        base = codigo
+    for i in range(len(base), 0, -1):
+        cand = base[:i]
+        for suf_mode in ('-', ' ', ''):
+            for suf in ('020', '030', '040', '050', 'STD', 'MA', 'CP10'):
+                if cand + suf_mode + suf in marca_por_codigo:
+                    return marca_por_codigo.get(cand + suf_mode + suf, '')
+    return ''
+
+
 def reporte_por_marca():
     consola.titulo('REPORTE DE PIEZAS DANADAS POR MARCA', ancho=60)
 
@@ -625,7 +673,7 @@ def reporte_por_marca():
     sin_marca = []
     for d in danadas:
         codigo = d.get('codigo', '')
-        marca = (marca_por_codigo.get(codigo) or '').strip() or 'SIN MARCA'
+        marca = _obtener_marca(codigo, marca_por_codigo) or 'SIN MARCA'
         cantidad = int(d.get('cantidad') or 1)
         registro = {
             'codigo': codigo,
