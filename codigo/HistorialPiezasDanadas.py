@@ -406,20 +406,44 @@ def ver_imagenes():
 # ----------------------------------------------------------------
 # OPCION 5: Cargar piezas con marca (TXT / Excel / manual)
 # ----------------------------------------------------------------
+RUTA_TXT_LISTA = r'\\PRINCIPAL\a2admin\Empre001\REPORTS\LISTA DE PRECIO 2023.TXT'
+CARPETA_TXT_LISTA = r'\\PRINCIPAL\a2admin\Empre001\REPORTS'
+NOMBRE_TXT_LISTA = 'LISTA DE PRECIO 2023'
+
+
+def _encontrar_txt_lista():
+    """Devuelve la ruta del TXT de lista de precios en la red.
+    Busca el nombre exacto y, si no, cualquier archivo que empiece con
+    'LISTA DE PRECIO' en la carpeta. Si no hay nada, devuelve None."""
+    import glob as _glob
+    if os.path.exists(RUTA_TXT_LISTA):
+        return RUTA_TXT_LISTA
+    if os.path.isdir(CARPETA_TXT_LISTA):
+        candidatos = _glob.glob(os.path.join(CARPETA_TXT_LISTA, 'LISTA DE PRECIO*'))
+        if candidatos:
+            candidatos.sort(key=os.path.getmtime, reverse=True)
+            return candidatos[0]
+    return None
+
+
 def _cargar_desde_txt():
     import tkinter as tk
     from tkinter import filedialog
 
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes('-topmost', True)
-    ruta = filedialog.askopenfilename(
-        title='Selecciona el archivo TXT de lista de precios',
-        filetypes=[('Archivos TXT', '*.txt'), ('Todos los archivos', '*.*')],
-    )
-    root.destroy()
+    ruta = _encontrar_txt_lista()
     if not ruta:
-        return None
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        ruta = filedialog.askopenfilename(
+            title='Selecciona el archivo TXT de lista de precios',
+            filetypes=[('Archivos TXT', '*.txt'), ('Todos los archivos', '*.*')],
+            initialdir=CARPETA_TXT_LISTA if os.path.isdir(CARPETA_TXT_LISTA) else None,
+        )
+        root.destroy()
+        if not ruta:
+            return None
+        print(consola.amarillo('  No estaba el archivo en la red; se selecciono manualmente.'))
 
     if parse_txt is None:
         print(consola.rojo('  No se pudo cargar el lector de TXT.'))
@@ -439,7 +463,7 @@ def _cargar_desde_txt():
         result.append({
             'codigo_pieza': codigo,
             'descripcion': f.get('desc', '').strip(),
-            'marca': f.get('marca', '').strip(),
+            'marca': f.get('prov', '').strip(),
         })
     return {'origen': os.path.basename(ruta), 'tipo': 'TXT', 'items': result}
 

@@ -44,11 +44,15 @@ def _headers(extra=None):
     return h
 
 
-def _request(method, tabla, params='', cuerpo=None, prefer=None, timeout=30):
+def _request(method, tabla, params='', cuerpo=None, prefer=None, timeout=30,
+             range_limite=None):
     cfg = _config()
     url = cfg['url'].rstrip('/') + '/' + tabla + params
     data = json.dumps(cuerpo).encode('utf-8') if cuerpo is not None else None
     extra = {'Prefer': prefer} if prefer else None
+    if range_limite:
+        extra = extra or {}
+        extra['Range'] = range_limite
     req = urllib.request.Request(url, data=data, method=method, headers=_headers(extra))
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -57,6 +61,23 @@ def _request(method, tabla, params='', cuerpo=None, prefer=None, timeout=30):
     except urllib.error.HTTPError as e:
         detalle = e.read().decode('utf-8', errors='replace')
         raise SupabaseError(f'Supabase HTTP {e.code}: {detalle[:500]}')
+
+
+def _listar_todo(tabla, params='', pagina=1000):
+    """Lista TODAS las filas de una tabla paginando en bloques de 1000
+    (PostgREST limita a 1000 filas por peticion)."""
+    filas = []
+    start = 0
+    while True:
+        lote = _request('GET', tabla, params,
+                        range_limite=f'{start}-{start + pagina - 1}') or []
+        if not lote:
+            break
+        filas.extend(lote)
+        if len(lote) < pagina:
+            break
+        start += pagina
+    return filas
 
 
 def upsert_guia(datos):
@@ -173,8 +194,8 @@ def upsert_piezas(lista):
 
 
 def listar_piezas():
-    """Devuelve todas las piezas del catalogo con su marca."""
-    return _request('GET', 'piezas', '?select=codigo_pieza,descripcion,marca&order=codigo_pieza.asc') or []
+    """Devuelve todas las piezas del catalogo con su marca (paginado)."""
+    return _listar_todo('piezas', '?select=codigo_pieza,descripcion,marca&order=codigo_pieza.asc')
 
 
 def buscar_piezas_marca(valor):
