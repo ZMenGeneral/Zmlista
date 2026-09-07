@@ -723,21 +723,43 @@ def reporte_por_marca():
         _guardar_reporte_marca(ordenadas, total_piezas, len(danadas))
 
 
-def _guardar_reporte_marca(ordenadas, total_piezas, total_registros):
+def _imagen_temporal(ruta, max_dim=90):
+    """Devuelve una miniatura PNG temporal de la imagen (o None si no existe)."""
+    if not os.path.exists(ruta):
+        return None
+    try:
+        from PIL import Image as PILImage
+        img = PILImage.open(ruta)
+        img.thumbnail((max_dim, max_dim))
+        tmp_dir = os.path.join(CARPETA_PROYECTO, 'salidas', '_imgs_tmp')
+        os.makedirs(tmp_dir, exist_ok=True)
+        tmp = os.path.join(tmp_dir, uuid.uuid4().hex + '.png')
+        img.convert('RGB').save(tmp, format='PNG')
+        return tmp
+    except Exception:
+        return None
+
+
+def _guardar_reporte_marca(ordenadas, total_piezas, total_registros, archivo=None):
     """Guarda el reporte por marca en Excel: una hoja por marca + resumen.
-    Cada registro incluye la cantidad y las rutas de sus imagenes."""
+    Las imagenes de cada pieza se incorporan de forma visible (miniaturas)
+    en la misma fila, a la derecha del codigo."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
+    from openpyxl.drawing.image import Image as XLImage
 
     CARPETA_SALIDAS = os.path.join(CARPETA_PROYECTO, 'salidas')
     os.makedirs(CARPETA_SALIDAS, exist_ok=True)
     fecha = datetime.now().strftime('%d-%m-%Y')
-    out = os.path.join(CARPETA_SALIDAS, f'Reporte Piezas Danadas por Marca {fecha}.xlsx')
+    if archivo:
+        out = archivo
+    else:
+        out = os.path.join(CARPETA_SALIDAS, f'Reporte Piezas Danadas por Marca {fecha}.xlsx')
 
-    encabezados = ['CODIGO', 'CANTIDAD', 'RAZON', 'CLIENTE', 'VENDEDOR', 'FECHA',
-                   'N° IMG', 'IMAGENES']
-    anchos = [16, 10, 40, 24, 24, 18, 8, 70]
+    encabezados = ['CODIGO', 'CANTIDAD', 'RAZON', 'CLIENTE', 'VENDEDOR', 'FECHA', 'N° IMG']
+    anchos = [16, 10, 40, 24, 24, 18, 8]
+    COL_IMAGENES = len(encabezados) + 1  # columna H = 8, a la derecha
 
     def _hoja_titulo(ws):
         for col, h in enumerate(encabezados, 1):
@@ -752,7 +774,7 @@ def _guardar_reporte_marca(ordenadas, total_piezas, total_registros):
         ws.freeze_panes = 'A2'
         ws.auto_filter.ref = f'A1:{get_column_letter(len(encabezados))}{n_filas}'
 
-    def _escribir_registro(ws, fila, marca, r):
+    def _escribir_registro(ws, fila, r):
         ws.cell(fila, 1, r['codigo'])
         ws.cell(fila, 2, r['cantidad'])
         ws.cell(fila, 3, r['razon'])
@@ -761,9 +783,6 @@ def _guardar_reporte_marca(ordenadas, total_piezas, total_registros):
         ws.cell(fila, 6, r['fecha'])
         imgs = r.get('imagenes') or []
         ws.cell(fila, 7, len(imgs))
-        if imgs:
-            cel = ws.cell(fila, 8, '; '.join(imgs))
-            cel.alignment = Alignment(vertical='top')
 
     def _titulo_hoja_valido(nombre):
         """El nombre de una hoja Excel maximo 31 chars y sin \\ / ? * [ ] :"""
@@ -772,6 +791,24 @@ def _guardar_reporte_marca(ordenadas, total_piezas, total_registros):
                              .replace('[', '(').replace(']', ')') \
                              .replace(':', '-')
         return nombre[:31] or 'Hoja'
+
+    tmp_generadas = []
+
+    def _insertar_imagenes(ws, fila, r):
+        imgs = r.get('imagenes') or []
+        col = COL_IMAGENES
+        for img_ruta in imgs:
+            tmp = _imagen_temporal(img_ruta)
+            if not tmp:
+                continue
+            tmp_generadas.append(tmp)
+            try:
+                xlimg = XLImage(tmp)
+                ws.add_image(xlimg, f'{get_column_letter(col)}{fila}')
+                col += 1
+            except Exception:
+                continue
+        return col - COL_IMAGENES
 
     wb = Workbook()
     ws_resumen = wb.active
@@ -798,11 +835,25 @@ def _guardar_reporte_marca(ordenadas, total_piezas, total_registros):
         _hoja_titulo(ws)
         fila = 2
         for r in data['registros']:
-            _escribir_registro(ws, fila, marca, r)
+            _escribir_registro(ws, fila, r)
+            n_imgs = _insertar_imagenes(ws, fila, r)
+            if n_imgs:
+                ws.row_dimensions[fila].height = 72
             fila += 1
         _ajustar_hoja(ws, fila - 1)
 
     wb.save(out)
+
+    for tmp in tmp_generadas:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+    try:
+        os.rmdir(os.path.join(CARPETA_SALIDAS, '_imgs_tmp'))
+    except Exception:
+        pass
+
     print(consola.verde(f'  Reporte guardado: {out}'))
     print(consola.verde(f'  {len(ordenadas)} hoja(s) de marca + resumen generadas.'))
 
