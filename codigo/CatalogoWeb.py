@@ -75,7 +75,10 @@ def crear_app():
 
     @app.get('/', response_class=HTMLResponse)
     def portada():
-        return PAGINA_HTML
+        return HTMLResponse(content=PAGINA_HTML, headers={
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+        })
 
     @app.get('/api/catalogo')
     def api_catalogo(marca: str = '', q: str = ''):
@@ -221,7 +224,7 @@ PAGINA_HTML = """
 <body>
 <header>
   <h1>Catalogo ZMlista</h1>
-  <p>Busca una pieza de nuestro historial y consulta su fabricante.</p>
+  <p>Busca una pieza de nuestro historial y consulta su fabricante. <span style="opacity:.6">v3</span></p>
 </header>
 <div class="wrap">
   <div class="stats">
@@ -364,6 +367,7 @@ function verFabricante(codigo, marca) {
   catch (e) { panel.scrollIntoView(); }
   var url = '/api/fabricante?codigo=' + encodeURIComponent(codigo) +
             '&marca=' + encodeURIComponent(marca);
+  var ventana = window.open('', '_blank');
   fetch(url).then(function (r) { return r.json(); }).then(function (d) {
     esconder(document.getElementById('pCargando'));
     mostrar(document.getElementById('pContenido'));
@@ -450,12 +454,23 @@ function verFabricante(codigo, marca) {
     var aviso = document.getElementById('pAviso');
     if (d.error) {
       aviso.innerHTML = d.error;
-    } else if (d.tipo === 'ficha' || (d.imagenes && d.imagenes.length)) {
+    } else if (d.tipo === 'enlace' || (d.imagenes && d.imagenes.length)) {
       aviso.innerHTML = '';
     } else {
       aviso.innerHTML = 'Este fabricante no permite extraer datos automaticamente. Abre el enlace del fabricante para ver la pieza y sus aplicaciones.';
     }
+    if (d.tipo === 'enlace') {
+      if (d.buscar_url) {
+        if (ventana && !ventana.closed) { ventana.location.href = d.buscar_url; }
+        aviso.innerHTML = 'Abriendo la ficha del fabricante en otra pestana: ' +
+            d.buscar_url;
+        mostrar(aviso);
+      }
+    } else if (ventana && !ventana.closed) {
+      ventana.close();
+    }
   }).catch(function () {
+    if (ventana && !ventana.closed) { ventana.close(); }
     esconder(document.getElementById('pCargando'));
     mostrar(document.getElementById('pContenido'));
     var aviso = document.getElementById('pAviso');
