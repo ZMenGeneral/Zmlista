@@ -146,3 +146,42 @@ def eliminar_pieza_danada(pieza_id):
     """Elimina un registro por su id."""
     _request('DELETE', 'historial_piezas_danadas',
              f'?id=eq.{pieza_id}', prefer='return=minimal')
+
+
+# ----------------------------------------------------------------
+# Catalogo de piezas (tabla piezas) - con marca
+# ----------------------------------------------------------------
+
+def upsert_pieza(pieza):
+    """Inserta o actualiza una pieza por codigo_pieza (con marca)."""
+    pieza = dict(pieza)
+    if 'fecha_creacion' in pieza:
+        pieza['fecha_creacion'] = datetime.now(timezone.utc).isoformat()
+    return _request('POST', 'piezas', '?on_conflict=codigo_pieza',
+                    cuerpo=pieza, prefer='resolution=merge-duplicates,return=minimal')
+
+
+def upsert_piezas(lista):
+    """Inserta o actualiza varias piezas por codigo_pieza. Devuelve cantidad."""
+    for p in lista:
+        p.setdefault('fecha_creacion', datetime.now(timezone.utc).isoformat())
+    if not lista:
+        return 0
+    _request('POST', 'piezas', '?on_conflict=codigo_pieza',
+             cuerpo=lista, prefer='resolution=merge-duplicates,return=minimal')
+    return len(lista)
+
+
+def listar_piezas():
+    """Devuelve todas las piezas del catalogo con su marca."""
+    return _request('GET', 'piezas', '?select=codigo_pieza,descripcion,marca&order=codigo_pieza.asc') or []
+
+
+def buscar_piezas_marca(valor):
+    """Busca piezas por codigo o descripcion o marca (ILIKE)."""
+    return _request('GET', 'piezas',
+                    '?select=codigo_pieza,descripcion,marca&or='
+                    f'(codigo_pieza.ilike.{urllib.parse.quote("*" + valor + "*")},'
+                    f'marca.ilike.{urllib.parse.quote("*" + valor + "*")},'
+                    f'descripcion.ilike.{urllib.parse.quote("*" + valor + "*")})'
+                    '&order=codigo_pieza.asc') or []

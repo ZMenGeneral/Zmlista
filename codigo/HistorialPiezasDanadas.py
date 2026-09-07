@@ -11,7 +11,9 @@ OPCION 13 - HISTORIAL DE PIEZAS DANADAS:
         2. Ver historial completo
         3. Buscar por codigo / vendedor / cliente
         4. Ver imagenes de un registro
-        5. Salir
+        5. Cargar piezas con marca
+        6. Reporte de piezas danadas por marca
+        7. Salir
 """
 import os
 import sys
@@ -28,8 +30,16 @@ from supabase_client import (
     buscar_piezas_danadas,
     obtener_pieza_danada,
     eliminar_pieza_danada,
+    upsert_pieza,
+    upsert_piezas,
+    listar_piezas,
+    buscar_piezas_marca,
     SupabaseError,
 )
+try:
+    from ConvertirListaExcel import parse_txt
+except Exception:
+    parse_txt = None
 
 CARPETA_CODIGO = os.path.dirname(os.path.abspath(__file__))
 CARPETA_PROYECTO = os.path.dirname(CARPETA_CODIGO)
@@ -112,20 +122,21 @@ def _fmt_listaregistros(registros):
     lineas = []
     lineas.append(
         consola.negrita(
-            f"  {'#':<4} {'CODIGO':<12} {'FECHA':<18} {'VENDEDOR':<18} {'CLIENTE':<20} {'RAZON'}"
+            f"  {'#':<4} {'CODIGO':<12} {'CANT':<6} {'FECHA':<18} {'VENDEDOR':<18} {'CLIENTE':<20} {'RAZON'}"
         )
     )
-    print('  ' + '-' * 100)
+    print('  ' + '-' * 108)
     for i, r in enumerate(registros, 1):
         cod = consola.naranja(r.get('codigo', ''))
+        cant = consola.naranja(str(r.get('cantidad', 1)))
         fecha = _fecha_corta(r.get('creado_en'))
         vendedor = r.get('vendedor') or '-'
         cliente = r.get('cliente') or '-'
         razon = (r.get('razon_dano') or '-')[:35]
         imgs = len(r.get('imagenes') or [])
         img_tag = f' [{consola.cian(str(imgs) + " img")}]' if imgs else ''
-        print(f'  {i:<4} {cod:<12} {fecha:<18} {vendedor:<18} {cliente:<20} {razon}{img_tag}')
-    print('  ' + '-' * 100)
+        print(f'  {i:<4} {cod:<12} {cant:<6} {fecha:<18} {vendedor:<18} {cliente:<20} {razon}{img_tag}')
+    print('  ' + '-' * 108)
 
 
 def _mostrar_detalle(reg):
@@ -135,6 +146,7 @@ def _mostrar_detalle(reg):
     print(consola.cian(consola.negrita('  DETALLE DE PIEZA DANADA')))
     print('=' * 60)
     print(f'  Codigo:          {consola.naranja(reg.get("codigo", ""))}')
+    print(f'  Cantidad:        {consola.naranja(str(reg.get("cantidad", 1)))}')
     print(f'  Razon del dano:  {reg.get("razon_dano") or "-"}')
     print(f'  Razon devolucion:{reg.get("razon_devolucion") or "-"}')
     print(f'  Vendedor:        {reg.get("vendedor") or "-"}')
@@ -170,6 +182,13 @@ def registrar():
             print('  Debes indicar la razon del dano.')
             continue
 
+        cantidad = _input('  Cantidad de piezas: ').strip()
+        try:
+            cantidad_int = max(1, int(float(cantidad)))
+        except (ValueError, TypeError):
+            print(consola.rojo('  Cantidad invalida. Debe ser un numero.'))
+            continue
+
         razon_dev = _input('  Razon de devolucion (Enter si no aplica): ').strip()
         vendedor = _input('  Vendedor: ').strip()
         cliente = _input('  Cliente: ').strip()
@@ -191,6 +210,7 @@ def registrar():
         print('-' * 50)
         print(consola.negrita('  RESUMEN:'))
         print(f'  Codigo:     {consola.naranja(codigo)}')
+        print(f'  Cantidad:   {consola.naranja(cantidad_int)}')
         print(f'  Dano:       {razon_dano}')
         if razon_dev:
             print(f'  Devolucion: {razon_dev}')
@@ -221,6 +241,7 @@ def registrar():
 
         registro = {
             'codigo': codigo,
+            'cantidad': cantidad_int,
             'razon_dano': razon_dano,
             'razon_devolucion': razon_dev or None,
             'vendedor': vendedor or None,
@@ -383,6 +404,310 @@ def ver_imagenes():
 
 
 # ----------------------------------------------------------------
+# OPCION 5: Cargar piezas con marca (TXT / Excel / manual)
+# ----------------------------------------------------------------
+def _cargar_desde_txt():
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    ruta = filedialog.askopenfilename(
+        title='Selecciona el archivo TXT de lista de precios',
+        filetypes=[('Archivos TXT', '*.txt'), ('Todos los archivos', '*.*')],
+    )
+    root.destroy()
+    if not ruta:
+        return None
+
+    if parse_txt is None:
+        print(consola.rojo('  No se pudo cargar el lector de TXT.'))
+        return None
+
+    try:
+        filas = parse_txt(ruta)
+    except Exception as e:
+        print(consola.rojo(f'  Error leyendo el TXT: {e}'))
+        return None
+
+    result = []
+    for f in filas:
+        codigo = f.get('codigo', '').strip()
+        if not codigo:
+            continue
+        result.append({
+            'codigo_pieza': codigo,
+            'descripcion': f.get('desc', '').strip(),
+            'marca': f.get('marca', '').strip(),
+        })
+    return {'origen': os.path.basename(ruta), 'tipo': 'TXT', 'items': result}
+
+
+def _cargar_desde_excel():
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    ruta = filedialog.askopenfilename(
+        title='Selecciona el Excel de piezas',
+        filetypes=[('Archivos Excel', '*.xlsx'), ('Todos los archivos', '*.*')],
+    )
+    root.destroy()
+    if not ruta:
+        return None
+
+    try:
+        from openpyxl import load_workbook
+        wb = load_workbook(ruta, data_only=True)
+        ws = wb.active
+    except Exception as e:
+        print(consola.rojo(f'  Error leyendo el Excel: {e}'))
+        return None
+
+    hdr_row = None
+    cols = {}
+    for r in range(1, 21):
+        encontradas = {}
+        for c in range(1, (ws.max_column or 2) + 1):
+            v = ws.cell(r, c).value
+            if isinstance(v, str):
+                u = v.strip().upper().replace('Í', 'I').replace('Ó', 'O') \
+                     .replace('É', 'E').replace('Á', 'A').replace('Ú', 'U') \
+                     .replace('Ñ', 'N')
+                if 'PIEZA' in u or 'CODIGO' in u or 'COD' in u:
+                    encontradas['pieza'] = c
+                elif 'DESC' in u:
+                    encontradas['desc'] = c
+                elif 'MARCA' in u:
+                    encontradas['marca'] = c
+        if 'pieza' in encontradas:
+            hdr_row = r
+            cols = encontradas
+            break
+
+    if not hdr_row or 'pieza' not in cols:
+        hdr_row = 0
+        cols = {'pieza': 1, 'desc': 2, 'marca': 3}
+
+    result = []
+    for r in range(hdr_row + 1, (ws.max_row or hdr_row) + 1):
+        codigo = ws.cell(r, cols.get('pieza', 1)).value
+        if codigo is None or str(codigo).strip() == '':
+            continue
+        result.append({
+            'codigo_pieza': str(codigo).strip(),
+            'descripcion': str(ws.cell(r, cols.get('desc', 2)).value or '').strip(),
+            'marca': str(ws.cell(r, cols.get('marca', 3)).value or '').strip(),
+        })
+
+    return {'origen': os.path.basename(ruta), 'tipo': 'Excel', 'items': result}
+
+
+def _cargar_manual():
+    print('  CARGAR PIEZA MANUAL: escribe codigo, descripcion y marca.')
+    print('  (Deja el codigo vacio para terminar)')
+    result = []
+    while True:
+        print()
+        codigo = _input('  Codigo de pieza: ').strip()
+        if not codigo:
+            break
+        desc = _input('  Descripcion: ').strip()
+        marca = _input('  Marca: ').strip()
+        result.append({
+            'codigo_pieza': codigo,
+            'descripcion': desc,
+            'marca': marca,
+        })
+        print(consola.verde(f'  Agregada: {codigo} ({marca})'))
+    return {'origen': 'MANUAL', 'tipo': 'Manual', 'items': result}
+
+
+def cargar_piezas_con_marca():
+    consola.titulo('CARGAR PIEZAS CON MARCA', ancho=50)
+
+    print('  Origen de las piezas:')
+    print('  1. Desde TXT de lista de precios')
+    print('  2. Desde Excel')
+    print('  3. Manual')
+    print()
+    opcion = _input('  Opcion: ').strip()
+
+    if opcion == '1':
+        datos = _cargar_desde_txt()
+    elif opcion == '2':
+        datos = _cargar_desde_excel()
+    elif opcion == '3':
+        datos = _cargar_manual()
+    else:
+        print(consola.amarillo('  Opcion invalida.'))
+        return
+
+    if not datos or not datos.get('items'):
+        print('  No se cargaron piezas.')
+        return
+
+    items = datos['items']
+    print(f'\n  Se leyeron {consola.negrita(str(len(items)))} pieza(s) desde {datos["tipo"]} ({datos["origen"]}).')
+
+    con_marca = [p for p in items if p.get('marca')]
+    print(f'  Piezas con marca: {consola.verde(str(len(con_marca)))}')
+    print(f'  Piezas sin marca: {consola.amarillo(str(len(items) - len(con_marca)))}')
+
+    print()
+    print('  Primeras 5:')
+    for p in items[:5]:
+        marca = p.get('marca') or '-'
+        print(f'    {p["codigo_pieza"]:<15} | Marca: {marca:<15} | {p.get("descripcion", "")[:30]}')
+    if len(items) > 5:
+        print(f'    ... y {len(items) - 5} mas')
+
+    print()
+    conf = _input('  Guardar en Supabase? [S/n]: ').strip().lower()
+    if conf in ('n', 'no'):
+        print('  Cancelado.')
+        return
+
+    try:
+        n = upsert_piezas(items)
+        print(consola.verde(f'  {n} pieza(s) guardadas/actualizadas en Supabase.'))
+    except SupabaseError as e:
+        print(consola.rojo(f'  Error de Supabase: {e}'))
+
+
+# ----------------------------------------------------------------
+# OPCION 6: Reporte de piezas danadas por marca
+# ----------------------------------------------------------------
+def reporte_por_marca():
+    consola.titulo('REPORTE DE PIEZAS DANADAS POR MARCA', ancho=60)
+
+    try:
+        danadas = listar_piezas_danadas()
+        piezas = listar_piezas()
+    except SupabaseError as e:
+        print(consola.rojo(f'  Error de Supabase: {e}'))
+        return
+
+    if not danadas:
+        print('  No hay piezas danadas registradas.')
+        return
+
+    marca_por_codigo = {p.get('codigo_pieza', ''): p.get('marca', '') for p in piezas}
+
+    por_marca = {}
+    sin_marca = []
+    for d in danadas:
+        codigo = d.get('codigo', '')
+        marca = (marca_por_codigo.get(codigo) or '').strip() or 'SIN MARCA'
+        cantidad = int(d.get('cantidad') or 1)
+        registro = {
+            'codigo': codigo,
+            'cantidad': cantidad,
+            'razon': d.get('razon_dano') or '',
+            'cliente': d.get('cliente') or '',
+            'vendedor': d.get('vendedor') or '',
+            'fecha': _fecha_corta(d.get('creado_en')),
+        }
+        data = por_marca.setdefault(marca, {'registros': [], 'total_piezas': 0})
+        data['registros'].append(registro)
+        data['total_piezas'] += cantidad
+        if marca == 'SIN MARCA':
+            sin_marca.append(codigo)
+
+    total_piezas = sum(d.get('cantidad') or 1 for d in danadas)
+
+    print(f'\n  Total piezas danadas: {consola.negrita(str(total_piezas))}  |  '
+          f'Registros: {consola.negrita(str(len(danadas)))}')
+    if sin_marca:
+        print(consola.amarillo(f'  Aviso: {len(set(sin_marca))} codigo(s) sin marca en el catalogo de piezas.'))
+
+    ordenadas = sorted(por_marca.items(), key=lambda kv: kv[1]['total_piezas'], reverse=True)
+
+    print()
+    print('=' * 62)
+    for marca, data in ordenadas:
+        print()
+        print(consola.cian(consola.negrita(f'  {marca.upper()}')))
+        print(f'  Total piezas danadas: {consola.rojo(str(data["total_piezas"]))}  |  '
+              f'Registros: {len(data["registros"])}')
+        print('-' * 62)
+        for r in data['registros']:
+            print(f'    {r["codigo"]:<14} x{r["cantidad"]:<4} {r["fecha"]}  {r["razon"][:35]}')
+            cliente = r['cliente'] or '-'
+            vendedor = r['vendedor'] or '-'
+            if cliente != '-' or vendedor != '-':
+                print(f'      Cliente: {cliente} | Vendedor: {vendedor}')
+        print('-' * 62)
+    print('=' * 62)
+
+    print()
+    reporte = '  Generar reporte en archivo? '
+    generar = _input(reporte + '[s/N]: ').strip().lower()
+    if generar in ('s', 'si', 'y', 'yes'):
+        _guardar_reporte_marca(ordenadas, total_piezas, len(danadas))
+
+
+def _guardar_reporte_marca(ordenadas, total_piezas, total_registros):
+    """Guarda el reporte por marca en un archivo TXT/Markdown en salidas."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    CARPETA_SALIDAS = os.path.join(CARPETA_PROYECTO, 'salidas')
+    os.makedirs(CARPETA_SALIDAS, exist_ok=True)
+    fecha = datetime.now().strftime('%d-%m-%Y')
+    out = os.path.join(CARPETA_SALIDAS, f'Reporte Piezas Danadas por Marca {fecha}.xlsx')
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Por marca'
+    encabezados = ['MARCA', 'CODIGO', 'CANTIDAD', 'RAZON', 'CLIENTE', 'VENDEDOR', 'FECHA']
+    anchos = [20, 14, 10, 40, 22, 22, 18]
+    for col, h in enumerate(encabezados, 1):
+        cel = ws.cell(1, col, h)
+        cel.font = Font(bold=True, color='FFFFFF')
+        cel.fill = PatternFill('solid', fgColor='7B2D26')
+        cel.alignment = Alignment(horizontal='center')
+
+    ws2 = wb.create_sheet('Resumen por marca')
+    for col, h in enumerate(['MARCA', 'TOTAL PIEZAS', 'REGISTROS'], 1):
+        cel = ws2.cell(1, col, h)
+        cel.font = Font(bold=True, color='FFFFFF')
+        cel.fill = PatternFill('solid', fgColor='1F4E78')
+        cel.alignment = Alignment(horizontal='center')
+
+    fila = 2
+    fila2 = 2
+    for marca, data in ordenadas:
+        ws2.cell(fila2, 1, marca)
+        ws2.cell(fila2, 2, data['total_piezas'])
+        ws2.cell(fila2, 3, len(data['registros']))
+        fila2 += 1
+        for r in data['registros']:
+            ws.cell(fila, 1, marca)
+            ws.cell(fila, 2, r['codigo'])
+            ws.cell(fila, 3, r['cantidad'])
+            ws.cell(fila, 4, r['razon'])
+            ws.cell(fila, 5, r['cliente'])
+            ws.cell(fila, 6, r['vendedor'])
+            ws.cell(fila, 7, r['fecha'])
+            fila += 1
+
+    for col, a in enumerate(anchos, 1):
+        ws.column_dimensions[get_column_letter(col)].width = a
+    ws2.column_dimensions['A'].width = 20
+    ws2.column_dimensions['B'].width = 14
+    ws2.column_dimensions['C'].width = 10
+    ws.freeze_panes = 'A2'
+    ws2.freeze_panes = 'A2'
+    wb.save(out)
+    print(consola.verde(f'  Reporte guardado: {out}'))
+
+
+# ----------------------------------------------------------------
 # Submenu principal
 # ----------------------------------------------------------------
 def main():
@@ -393,7 +718,9 @@ def main():
         print('  2. Ver historial completo')
         print('  3. Buscar por codigo / vendedor / cliente')
         print('  4. Ver imagenes de un registro')
-        print('  5. Salir')
+        print('  5. Cargar piezas con marca')
+        print('  6. Reporte de piezas danadas por marca')
+        print('  7. Salir')
         print('=' * 50)
         print()
 
@@ -412,6 +739,12 @@ def main():
             consola.limpiar()
             ver_imagenes()
         elif opcion == '5':
+            consola.limpiar()
+            cargar_piezas_con_marca()
+        elif opcion == '6':
+            consola.limpiar()
+            reporte_por_marca()
+        elif opcion == '7':
             print('\n  Saliendo del historial de piezas danadas.')
             break
         else:
