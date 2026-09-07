@@ -766,13 +766,18 @@ def _guardar_reporte_marca(ordenadas, total_piezas, total_registros, archivo=Non
             cel = ws.cell(1, col, h)
             cel.font = Font(bold=True, color='FFFFFF')
             cel.fill = PatternFill('solid', fgColor='7B2D26')
-            cel.alignment = Alignment(horizontal='center')
+            cel.alignment = Alignment(horizontal='center', vertical='center')
 
     def _ajustar_hoja(ws, n_filas):
         for col, a in enumerate(anchos, 1):
             ws.column_dimensions[get_column_letter(col)].width = a
         ws.freeze_panes = 'A2'
         ws.auto_filter.ref = f'A1:{get_column_letter(len(encabezados))}{n_filas}'
+        for fila in range(2, n_filas + 1):
+            for col in range(1, len(encabezados) + 1):
+                cel = ws.cell(fila, col)
+                cel.font = Font(bold=True)
+                cel.alignment = Alignment(horizontal='center', vertical='center')
 
     def _escribir_registro(ws, fila, r):
         ws.cell(fila, 1, r['codigo'])
@@ -817,7 +822,7 @@ def _guardar_reporte_marca(ordenadas, total_piezas, total_registros, archivo=Non
         cel = ws_resumen.cell(1, col, h)
         cel.font = Font(bold=True, color='FFFFFF')
         cel.fill = PatternFill('solid', fgColor='1F4E78')
-        cel.alignment = Alignment(horizontal='center')
+        cel.alignment = Alignment(horizontal='center', vertical='center')
     ws_resumen.column_dimensions['A'].width = 24
     ws_resumen.column_dimensions['B'].width = 14
     ws_resumen.column_dimensions['C'].width = 10
@@ -825,9 +830,10 @@ def _guardar_reporte_marca(ordenadas, total_piezas, total_registros, archivo=Non
 
     fila_resumen = 2
     for marca, data in ordenadas:
-        ws_resumen.cell(fila_resumen, 1, marca)
-        ws_resumen.cell(fila_resumen, 2, data['total_piezas'])
-        ws_resumen.cell(fila_resumen, 3, len(data['registros']))
+        for col, valor in enumerate([marca, data['total_piezas'], len(data['registros'])], 1):
+            cel = ws_resumen.cell(fila_resumen, col, valor)
+            cel.font = Font(bold=True)
+            cel.alignment = Alignment(horizontal='center', vertical='center')
         fila_resumen += 1
 
         nombre_hoja = _titulo_hoja_valido(marca)
