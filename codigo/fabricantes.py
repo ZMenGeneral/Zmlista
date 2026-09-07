@@ -39,6 +39,19 @@ MAX_ENLACES = 8
 CLOYES_AJAX = 'https://cloyes.com/wp-admin/admin-ajax.php'
 CLOYES_ASSETS = 'https://cloyes.com/wp-content/uploads/CloyesAssets/'
 
+DRIV_PART_URL = ('https://www.drivparts.com/content/loc-latam/loc-mx/'
+                 'fmmp-corporate/es_MX/part-details.html')
+
+# brandCode que usa el buscador de piezas de DRiV (part-details.html) para
+# cada marca de Federal-Mogul del catalogo.
+DRIV_BRAND_CODES = {
+    'SEALED POWER': 'BDBR',
+    'FEL-PRO': 'BCWV',
+    'NATIONAL OIL SEALS': 'BCZK',
+    'MOOG': 'BCCH',
+    'CHAMPION': 'BBKH',
+}
+
 # Imagenes que ya aparecieron en la pagina de OTRO codigo: son decorativas
 # del sitio (logos, banners) y se descartan.
 _IMG_COMUNES = {}
@@ -123,6 +136,21 @@ def _componer(plantilla, codigo, marca):
     return (plantilla
             .replace('{codigo}', urllib.parse.quote_plus(codigo))
             .replace('{marca}', urllib.parse.quote_plus(marca or '')))
+
+
+def _buscar_url(codigo, marca, con):
+    """URL de busqueda/ficha segun el conector."""
+    marca_norm = _normalizar(marca)
+    if con['tipo'] == 'enlace' and marca_norm in DRIV_BRAND_CODES:
+        pn = codigo
+        if marca_norm == 'NATIONAL OIL SEALS' and len(pn) > 1 \
+                and pn[0] in 'Nn':
+            pn = pn[1:]
+        bc = DRIV_BRAND_CODES[marca_norm]
+        return (DRIV_PART_URL + '?part_number=' +
+                urllib.parse.quote_plus(pn) + '&brand_code=' +
+                urllib.parse.quote_plus(bc))
+    return _componer(con['buscar'], codigo, marca)
 
 
 def _abs(url, base):
@@ -387,7 +415,7 @@ def consulta_fabricante(codigo, marca):
     """Consulta el fabricante de un codigo y devuelve info best-effort."""
     marca = (marca or '').strip()
     con = conector_para(marca)
-    buscar_url = _componer(con['buscar'], codigo, marca)
+    buscar_url = _buscar_url(codigo, marca, con)
 
     if con['tipo'] == 'ficha_cloyes':
         return _ficha_cloyes(codigo, marca)

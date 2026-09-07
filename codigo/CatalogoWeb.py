@@ -360,7 +360,8 @@ function verFabricante(codigo, marca) {
   document.getElementById('pProveedor').textContent = 'Consultando fabricante...';
   esconder(document.getElementById('pContenido'));
   mostrar(document.getElementById('pCargando'));
-  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  try { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  catch (e) { panel.scrollIntoView(); }
   var url = '/api/fabricante?codigo=' + encodeURIComponent(codigo) +
             '&marca=' + encodeURIComponent(marca);
   fetch(url).then(function (r) { return r.json(); }).then(function (d) {
@@ -456,6 +457,7 @@ function verFabricante(codigo, marca) {
     }
   }).catch(function () {
     esconder(document.getElementById('pCargando'));
+    mostrar(document.getElementById('pContenido'));
     var aviso = document.getElementById('pAviso');
     aviso.innerHTML = 'La consulta al fabricante fallo. Abre el enlace manualmente.';
     mostrar(aviso);
