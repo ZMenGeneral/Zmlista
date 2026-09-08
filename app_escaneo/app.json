@@ -6,10 +6,9 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "splash": {
-      "backgroundColor": "#1a1a2e"
-    },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -20,7 +19,9 @@
       "adaptiveIcon": {
         "backgroundColor": "#1a1a2e"
       },
-      "permissions": ["CAMERA"],
+      "permissions": [
+        "CAMERA"
+      ],
       "package": "com.escaneo.app"
     },
     "plugins": [
@@ -29,7 +30,8 @@
         {
           "cameraPermission": "Necesitamos acceso a la cámara para escanear códigos de barras"
         }
-      ]
+      ],
+      "expo-asset"
     ]
   }
 }

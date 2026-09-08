@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Vibration } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Audio } from 'expo-av';
+import { createAudioPlayer } from 'expo-audio';
 
 const beepWav = require('../assets/beep.wav');
 
@@ -11,7 +11,19 @@ export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codi
   const [contador, setContador] = useState(0);
   const [puedeEscanear, setPuedeEscanear] = useState(false);
   const procesandoRef = useRef(false);
-  const sonidoRef = useRef(null);
+  const beepPlayerRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      beepPlayerRef.current = createAudioPlayer(beepWav);
+    } catch (e) {
+    }
+    return () => {
+      if (beepPlayerRef.current) {
+        try { beepPlayerRef.current.remove(); } catch (e) {}
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (permission && !permission.granted) {
@@ -19,13 +31,14 @@ export default function ScannerScreen({ onEscaneado, onVolver, piezaActual, codi
     }
   }, [permission]);
 
-  const reproducirBeep = useCallback(async () => {
+  const reproducirBeep = useCallback(() => {
     try {
-      const { sound } = await Audio.Sound.createAsync(beepWav);
-      sonidoRef.current = sound;
-      await sound.playAsync();
+      const p = beepPlayerRef.current;
+      if (p) {
+        p.seekTo(0);
+        p.play();
+      }
     } catch (e) {
-      // silencio si no se puede reproducir
     }
   }, []);
 
