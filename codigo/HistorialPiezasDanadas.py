@@ -708,12 +708,23 @@ def reporte_por_marca():
         print(f'  Total piezas danadas: {consola.rojo(str(data["total_piezas"]))}  |  '
               f'Registros: {len(data["registros"])}')
         print('-' * 62)
+        casos_por_codigo = {}
         for r in data['registros']:
-            print(f'    {r["codigo"]:<14} x{r["cantidad"]:<4} {r["fecha"]}  {r["razon"][:35]}')
-            cliente = r['cliente'] or '-'
-            vendedor = r['vendedor'] or '-'
-            if cliente != '-' or vendedor != '-':
-                print(f'      Cliente: {cliente} | Vendedor: {vendedor}')
+            casos_por_codigo.setdefault(r['codigo'], []).append(r)
+        for codigo, casos in casos_por_codigo.items():
+            print()
+            print(consola.negrita(f'  {codigo.upper()}  ({len(casos)} caso(s))'))
+            for i, r in enumerate(casos, 1):
+                print(f'    Caso {i}:  x{r["cantidad"]}  {r["fecha"]}  {r["razon"][:38]}')
+                dev = r['razon_devolucion']
+                if dev and dev != r['razon'][:38]:
+                    print(f'            Devolucion: {dev}')
+                cliente = r['cliente'] or '-'
+                vendedor = r['vendedor'] or '-'
+                if cliente != '-' or vendedor != '-':
+                    print(f'            Cliente: {cliente} | Vendedor: {vendedor}')
+            total_codigo = sum(c['cantidad'] for c in casos)
+            print(consola.amarillo(f'    Total de piezas = {total_codigo}'))
         print('-' * 62)
     print('=' * 62)
 
@@ -844,11 +855,40 @@ def _guardar_reporte_marca(ordenadas, total_piezas, total_registros, archivo=Non
         ws = wb.create_sheet(title=nombre_hoja)
         _hoja_titulo(ws)
         fila = 2
+        casos_por_codigo = []
+        vistos = set()
         for r in data['registros']:
-            _escribir_registro(ws, fila, r, fila - 1)
-            n_imgs = _insertar_imagenes(ws, fila, r)
-            if n_imgs:
-                ws.row_dimensions[fila].height = 72
+            if r['codigo'] not in vistos:
+                vistos.add(r['codigo'])
+                casos_por_codigo.append((r['codigo'], []))
+        for r in data['registros']:
+            for grupo in casos_por_codigo:
+                if grupo[0] == r['codigo']:
+                    grupo[1].append(r)
+                    break
+        for codigo, casos in casos_por_codigo:
+            titulo = (codigo or 'SIN CODIGO').upper()
+            ws.merge_cells(start_row=fila, start_column=1,
+                           end_row=fila, end_column=len(encabezados))
+            cel_t = ws.cell(fila, 1, f'{titulo} - {len(casos)} caso(s)')
+            cel_t.font = Font(bold=True, color='FFFFFF')
+            cel_t.fill = PatternFill('solid', fgColor='1F4E78')
+            cel_t.alignment = Alignment(horizontal='center', vertical='center')
+            ws.row_dimensions[fila].height = 22
+            fila += 1
+            for i, r in enumerate(casos, 1):
+                _escribir_registro(ws, fila, r, i)
+                n_imgs = _insertar_imagenes(ws, fila, r)
+                if n_imgs:
+                    ws.row_dimensions[fila].height = 72
+                fila += 1
+            total_codigo = sum(c['cantidad'] for c in casos)
+            ws.cell(fila, 1, 'TOTAL DE PIEZAS')
+            ws.cell(fila, 3, total_codigo)
+            for col in range(1, len(encabezados) + 1):
+                c = ws.cell(fila, col)
+                c.font = Font(bold=True)
+                c.fill = PatternFill('solid', fgColor='DDEBF7')
             fila += 1
         _ajustar_hoja(ws, fila - 1)
 
