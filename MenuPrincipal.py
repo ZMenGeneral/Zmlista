@@ -234,7 +234,17 @@ def _ejecutar_opcion(opcion):
         sys.path.insert(0, os.path.join(RAIZ, 'servidor_escaneo'))
         try:
             import servidor
-            ip = servidor.obtener_ip_local()
+            todas_ips = servidor._ips_locales()
+            print()
+            print('  Elige la red donde estara el celular:')
+            for _i, _x in enumerate(todas_ips, 1):
+                _tag = ' (hotspot)' if _x.startswith('192.168.137.') else ''
+                print(f'    {_i}) {_x}{_tag}')
+            _opc = preguntar('  Opcion [1]: ') or '1'
+            try:
+                ip = todas_ips[int(_opc) - 1]
+            except Exception:
+                ip = todas_ips[0]
             h = threading.Thread(
                 target=lambda: uvicorn.run(
                     servidor.app, host='0.0.0.0', port=8000, log_level='warning'),
@@ -244,6 +254,7 @@ def _ejecutar_opcion(opcion):
             print(f'  Servidor iniciado en {consola.verde(f"http://{ip}:8000")}')
             print()
             print('  Iniciando Expo... Escanea el QR con la app Expo Go')
+            print(f'  (o escribe manualmente en Expo Go: {consola.amarillo(f"exp://{ip}:8081")})')
             print('-' * 55)
             print()
             app_dir = os.path.join(RAIZ, 'app_escaneo')
