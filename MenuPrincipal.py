@@ -247,6 +247,12 @@ def _ejecutar_opcion(opcion):
             print('-' * 55)
             print()
             app_dir = os.path.join(RAIZ, 'app_escaneo')
+            _token_path = os.path.join(RAIZ, '.expo_token')
+            if not os.environ.get('EXPO_TOKEN') and os.path.exists(_token_path):
+                with open(_token_path, encoding='utf-8') as _f:
+                    _tok = _f.read().strip()
+                if _tok:
+                    os.environ['EXPO_TOKEN'] = _tok
             os.environ['REACT_NATIVE_PACKAGER_HOSTNAME'] = ip
             _sp.run(['cmd', '/c', 'npx', 'expo', 'start'],
                     cwd=app_dir, env=os.environ)
