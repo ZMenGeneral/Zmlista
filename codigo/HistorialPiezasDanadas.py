@@ -679,6 +679,7 @@ def reporte_por_marca():
             'codigo': codigo,
             'cantidad': cantidad,
             'razon': d.get('razon_dano') or '',
+            'razon_devolucion': d.get('razon_devolucion') or '',
             'cliente': d.get('cliente') or '',
             'vendedor': d.get('vendedor') or '',
             'fecha': _fecha_corta(d.get('creado_en')),
@@ -757,9 +758,10 @@ def _guardar_reporte_marca(ordenadas, total_piezas, total_registros, archivo=Non
     else:
         out = os.path.join(CARPETA_SALIDAS, f'Reporte Piezas Danadas por Marca {fecha}.xlsx')
 
-    encabezados = ['CODIGO', 'CANTIDAD', 'RAZON', 'CLIENTE', 'VENDEDOR', 'FECHA', 'N° IMG']
-    anchos = [16, 10, 40, 24, 24, 18, 8]
-    COL_IMAGENES = len(encabezados) + 1  # columna H = 8, a la derecha
+    encabezados = ['N°', 'CODIGO', 'CANTIDAD', 'RAZON', 'RAZON DEVOLUCION',
+                   'CLIENTE', 'VENDEDOR', 'FECHA', 'N° IMG']
+    anchos = [5, 16, 10, 34, 24, 24, 24, 18, 8]
+    COL_IMAGENES = len(encabezados) + 1  # columna J = 10, a la derecha
 
     def _hoja_titulo(ws):
         for col, h in enumerate(encabezados, 1):
@@ -779,15 +781,17 @@ def _guardar_reporte_marca(ordenadas, total_piezas, total_registros, archivo=Non
                 cel.font = Font(bold=True)
                 cel.alignment = Alignment(horizontal='center', vertical='center')
 
-    def _escribir_registro(ws, fila, r):
-        ws.cell(fila, 1, r['codigo'])
-        ws.cell(fila, 2, r['cantidad'])
-        ws.cell(fila, 3, r['razon'])
-        ws.cell(fila, 4, r['cliente'])
-        ws.cell(fila, 5, r['vendedor'])
-        ws.cell(fila, 6, r['fecha'])
+    def _escribir_registro(ws, fila, r, num):
+        ws.cell(fila, 1, num)
+        ws.cell(fila, 2, r['codigo'])
+        ws.cell(fila, 3, r['cantidad'])
+        ws.cell(fila, 4, r['razon'])
+        ws.cell(fila, 5, r['razon_devolucion'])
+        ws.cell(fila, 6, r['cliente'])
+        ws.cell(fila, 7, r['vendedor'])
+        ws.cell(fila, 8, r['fecha'])
         imgs = r.get('imagenes') or []
-        ws.cell(fila, 7, len(imgs))
+        ws.cell(fila, 9, len(imgs))
 
     def _titulo_hoja_valido(nombre):
         """El nombre de una hoja Excel maximo 31 chars y sin \\ / ? * [ ] :"""
@@ -841,7 +845,7 @@ def _guardar_reporte_marca(ordenadas, total_piezas, total_registros, archivo=Non
         _hoja_titulo(ws)
         fila = 2
         for r in data['registros']:
-            _escribir_registro(ws, fila, r)
+            _escribir_registro(ws, fila, r, fila - 1)
             n_imgs = _insertar_imagenes(ws, fila, r)
             if n_imgs:
                 ws.row_dimensions[fila].height = 72
