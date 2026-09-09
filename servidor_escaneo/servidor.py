@@ -33,16 +33,38 @@ app = FastAPI(title='Servidor de Escaneo')
 clientes_ws: list[WebSocket] = []
 
 
-def obtener_ip_local():
-    """Obtiene la IP local de la máquina."""
+def _ips_locales():
+    """Lista las IPs IPv4 no-loopback de la máquina."""
+    ips = []
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('8.8.8.8', 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
+        _, _, lista = socket.gethostbyname_ex(socket.gethostname())
+        ips = [ip for ip in lista if not ip.startswith('127.')]
     except Exception:
-        return '127.0.0.1'
+        pass
+    if not ips:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('8.8.8.8', 80))
+            ip = s.getsockname()[0]
+            s.close()
+            ips = [ip]
+        except Exception:
+            ips = ['127.0.0.1']
+    return ips
+
+
+def obtener_ip_local():
+    """Obtiene la IP local de la máquina.
+
+    Si el hotspot móvil de Windows está activo (subred 192.168.137.x),
+    los celulares se conectan a esa IP y se debe usar en el QR/URL.
+    Si no, usa la IP de la red con salida a internet (comportamiento previo).
+    """
+    ips = _ips_locales()
+    for ip in ips:
+        if ip.startswith('192.168.137.'):
+            return ip
+    return ips[0]
 
 
 @app.post('/scan')
