@@ -337,7 +337,12 @@ def main():
     print()
     print('  Escanea para conectar desde el celular:')
     print()
-    print(generar_qr_terminal(url))
+    try:
+        print(generar_qr_terminal(url))
+    except ImportError:
+        print('  (instala qrcode para ver el QR: pip install qrcode)')
+    except Exception:
+        pass
     print()
     print('  Esperando escaneos...')
     print('-' * 55)
