@@ -10,3 +10,5 @@ node_modules/
 .opencode/
 .expo/
 .expo_token
+servidor_escaneo/token_web.txt
+servidor_escaneo/certs/

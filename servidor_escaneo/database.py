@@ -86,6 +86,21 @@ def borrar_ultimo():
     return fila.get('codigo')
 
 
+def borrar_codigo(codigo):
+    """Elimina todos los escaneos de un código específico.
+    Devuelve la cantidad de filas eliminadas."""
+    try:
+        filas = _request('GET', TABLA_ESCANEOS,
+                         f'?codigo=eq.{urllib.parse.quote(codigo)}&select=id')
+    except SupabaseError:
+        filas = []
+    if not filas:
+        return 0
+    for fila in filas:
+        _request('DELETE', TABLA_ESCANEOS, f'?id=eq.{fila["id"]}')
+    return len(filas)
+
+
 # --- Funciones para piezas y vinculación barcode → pieza ---
 
 

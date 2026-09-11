@@ -12,7 +12,7 @@ Menu tipo do-while con 6 opciones.
     Opcion 8: No vendidos (ventas PDF vs pedido)
     Opcion 9: No vendidos: historial por mes (Supabase)
     Opcion 10: Analizar facturas (PDFs de facturas de compra)
-    Opcion 11: Servidor de escaneo de codigos de barras
+    Opcion 11: Escaner de codigos WEB (en el navegador del celular, sin Expo)
     Opcion 12: Historico de todas nuestras piezas (catalogo con marcas)
     Opcion 13: Historial de piezas danadas
     Opcion 14: Catalogo web (servidor local + consulta al fabricante)
@@ -41,7 +41,6 @@ import PiezasHistorico as piezas_historico
 import CatalogoWeb as catalogo_web
 import consola
 import threading
-import uvicorn
 
 
 def preguntar(texto):
@@ -234,42 +233,34 @@ def _ejecutar_opcion(opcion):
         sys.path.insert(0, os.path.join(RAIZ, 'servidor_escaneo'))
         try:
             import servidor
-            todas_ips = servidor._ips_locales()
+            servidor.iniciar_servidores()
+            ip = servidor.obtener_ip_local()
+            url_web = f'https://{ip}:8443/app?t={servidor.TOKEN_WEB}'
             print()
-            print('  Elige la red donde estara el celular:')
-            for _i, _x in enumerate(todas_ips, 1):
-                _tag = ' (hotspot)' if _x.startswith('192.168.137.') else ''
-                print(f'    {_i}) {_x}{_tag}')
-            _opc = preguntar('  Opcion [1]: ') or '1'
+            print('  ESCANER DE CODIGOS WEB (navegador del celular)')
+            print('  Sin Expo: se abre en Chrome/Safari.')
+            print('  Acceso SOLO por este QR (lleva el codigo de autorizacion):')
+            print()
             try:
-                ip = todas_ips[int(_opc) - 1]
+                print(servidor.generar_qr_terminal(url_web))
             except Exception:
-                ip = todas_ips[0]
-            h = threading.Thread(
-                target=lambda: uvicorn.run(
-                    servidor.app, host='0.0.0.0', port=8000, log_level='warning'),
-                daemon=True)
-            h.start()
+                pass
             print()
-            print(f'  Servidor iniciado en {consola.verde(f"http://{ip}:8000")}')
-            print()
-            print('  Iniciando Expo... Escanea el QR con la app Expo Go')
-            print(f'  (o escribe manualmente en Expo Go: {consola.amarillo(f"exp://{ip}:8081")})')
+            print(f'  URL: {consola.amarillo(url_web)}')
+            print(f'  API: {consola.verde(f"http://{ip}:8000")}')
             print('-' * 55)
             print()
-            app_dir = os.path.join(RAIZ, 'app_escaneo')
-            _token_path = os.path.join(RAIZ, '.expo_token')
-            if not os.environ.get('EXPO_TOKEN') and os.path.exists(_token_path):
-                with open(_token_path, encoding='utf-8') as _f:
-                    _tok = _f.read().strip()
-                if _tok:
-                    os.environ['EXPO_TOKEN'] = _tok
-            os.environ['REACT_NATIVE_PACKAGER_HOSTNAME'] = ip
-            _sp.run(['cmd', '/c', 'npx', 'expo', 'start'],
-                    cwd=app_dir, env=os.environ)
-        except KeyboardInterrupt:
+            print('  En el celular: escanea el QR, acepta la advertencia del')
+            print('  certificado (una sola vez) y presiona INICIAR para la camara.')
             print()
-            print('  Servidor detenido.')
+            print('  Ctrl+C para volver al menu.')
+            try:
+                import time
+                while True:
+                    time.sleep(3600)
+            except KeyboardInterrupt:
+                print()
+                print('  Servidor detenido.')
         except Exception as e:
             print(f'  Error: {e}')
         preguntar('\n  Presiona Enter para volver al menu...')
