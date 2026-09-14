@@ -27,8 +27,13 @@ def autenticar():
         creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except Exception:
+                print()
+                print('  Token expirado o revocado. Abriendo navegador para renovar...')
+                creds = None
+        if not creds or not creds.valid:
             config = _cargar_config()
             flow = InstalledAppFlow.from_client_config(
                 {

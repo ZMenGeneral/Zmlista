@@ -486,6 +486,10 @@ h1{text-align:center;color:#00d4ff;font-size:20px;margin-bottom:6px}
 #video{width:100%;height:260px;object-fit:cover;display:block}
 #frame{position:absolute;top:50%;left:50%;width:72%;height:120px;transform:translate(-50%,-50%);
        border:2px solid #00d4ff;border-radius:10px;box-shadow:0 0 0 2000px rgba(0,0,0,.35)}
+#foco{position:absolute;width:80px;height:80px;border:2px solid #ffd93d;border-radius:50%;
+      transform:translate(-50%,-50%);pointer-events:none;display:none;z-index:6;
+      box-shadow:0 0 12px #ffd93d,0 0 0 4px rgba(255,217,61,.2)}
+#foco.on{width:64px;height:64px;transition:width .25s,height .25s,box-shadow .25s}
 .estado{text-align:center;margin:10px 0;font-size:14px;min-height:20px}
 .ok{color:#00ff88;font-weight:bold}
 .warn{color:#f39c12;font-weight:bold}
@@ -522,6 +526,7 @@ h1{text-align:center;color:#00d4ff;font-size:20px;margin-bottom:6px}
 .citem b{color:#eee}.citem span{color:#888;font-size:11px}
 .volverTop{text-align:center;margin:10px 0}
 .volverTop a{color:#e74c3c;text-decoration:none;font-weight:bold}
+.btn.on{background:linear-gradient(180deg,#ffd93d,#f5b301);color:#222;box-shadow:0 0 14px #ffd93d}
 </style>
 </head>
 <body>
@@ -551,9 +556,14 @@ h1{text-align:center;color:#00d4ff;font-size:20px;margin-bottom:6px}
   <div class="vidWrap">
     <video id="video" muted playsinline></video>
     <div id="frame"></div>
+    <div id="foco"></div>
   </div>
   <div class="estado" id="estadoScan">Presiona INICIAR</div>
   <div class="det" id="detScan"></div>
+  <div class="fila">
+    <button class="btn b-ora peq" id="btnFlash" onclick="toggleFlash()">⚡ Flash</button>
+    <button class="btn b-azul peq" onclick="reEnfocar()">🔍 Enfocar</button>
+  </div>
   <div class="fila">
     <button class="btn b-cyan" id="btnIni">Iniciar</button>
     <button class="btn b-red" id="btnDet">Detener</button>
@@ -603,7 +613,7 @@ var T = (new URLSearchParams(location.search)).get('t') || '';
 var escaneos = [];          // historial [{codigo,cantidad,codigo_pieza,descripcion,barra}]
 var stats = { codigos_unicos: 0, unidades_totales: 0 };
 var contadorScan = 0, ultimoCodigo = '', piezaActual = '', codigoPendiente = '';
-var reader = null, activo = false, ultimoProcesado = '', ultimaVezProcesado = 0;
+var reader = null, activo = false, flashOn = false, ultimoProcesado = '', ultimaVezProcesado = 0;
 var lecturasFiltro = {};   // codigo -> {cant, t}: repeticiones consecutivas del mismo codigo
 var facturasSel = {};
 var busquedaFact = '';
@@ -724,7 +734,10 @@ function iniciarScan(){
   if(typeof ZXing === 'undefined'){ $('estadoScan').textContent = 'Libreria no disponible'; return; }
   reader = new ZXing.BrowserMultiFormatReader();
   reader.decodeFromConstraints(
-    { video:{ facingMode:{ ideal:'environment' } }, audio:false },
+    { video:{
+        facingMode:{ ideal:'environment' },
+        focusMode:{ ideal:'continuous' }
+      }, audio:false },
     $('video'),
     function(result){
       if(!result) return;
@@ -750,6 +763,9 @@ function iniciarScan(){
 function detenerScan(){
   if(reader){ try{ reader.reset(); }catch(e){} reader = null; }
   lecturasFiltro = {};
+  flashOn = false;
+  var bf = $('btnFlash');
+  if(bf){ bf.textContent = '⚡ Flash'; bf.classList.remove('on'); }
   var vid = $('video');
   if(vid && vid.srcObject){
     try{ var st = vid.srcObject; (st.getTracks && st.getTracks()).forEach(function(tr){ tr.stop(); }); }catch(e){}
@@ -758,6 +774,75 @@ function detenerScan(){
   activo = false;
   $('estadoScan').textContent = 'Camara detenida';
 }
+function obtenerTrack(){
+  var vid = $('video');
+  if(!vid || !vid.srcObject) return null;
+  try{ return vid.srcObject.getVideoTracks()[0]; }catch(e){ return null; }
+}
+function toggleFlash(){
+  var tr = obtenerTrack();
+  if(!tr){ alert('Presiona INICIAR primero.'); return; }
+  flashOn = !flashOn;
+  try{
+    tr.applyConstraints({ advanced:[{ torch: flashOn }] })
+      .then(function(){
+        $('btnFlash').textContent = flashOn ? '⚡ Flash ON' : '⚡ Flash';
+        $('btnFlash').classList.toggle('on', flashOn);
+      })
+      .catch(function(){ flashOn = !flashOn; $('estadoScan').textContent='Flash no disponible'; });
+  }catch(e){ flashOn = false; $('estadoScan').textContent='Flash no disponible'; }
+}
+function reEnfocar(){
+  var vid = $('video');
+  if(!vid){ alert('Presiona INICIAR primero.'); return; }
+  var r = vid.getBoundingClientRect();
+  tapEnfocar(r.left + r.width/2, r.top + r.height/2);
+}
+var focoTimer = 0;
+function tapEnfocar(cx, cy){
+  var vid = $('video'), tr = obtenerTrack();
+  if(!vid || !tr){ return; }
+  var r = vid.getBoundingClientRect();
+  var x = (cx - r.left)/r.width, y = (cy - r.top)/r.height;
+  x = Math.max(0, Math.min(1, x)); y = Math.max(0, Math.min(1, y));
+  var f = $('foco');
+  f.style.display = 'block';
+  f.style.left = (cx - r.left) + 'px';
+  f.style.top = (cy - r.top) + 'px';
+  f.className = 'on';
+  clearTimeout(focoTimer);
+  focoTimer = setTimeout(function(){ f.style.display='none'; }, 900);
+  aplicarFoco(x, y);
+}
+function aplicarFoco(x, y){
+  var tr = obtenerTrack(); if(!tr) return;
+  $('estadoScan').textContent = '🔍 Enfocando...';
+  try{
+    var caps = tr.getCapabilities ? tr.getCapabilities() : {};
+    var modos = (caps.focusMode || []).length ? caps.focusMode : ['continuous','single-shot','manual'];
+    var adv = [];
+    if(modos.indexOf('single-shot') >= 0){
+      adv.push({ focusMode:'single-shot', focusDistance: y });
+    } else if(modos.indexOf('manual') >= 0){
+      adv.push({ focusMode:'manual', focusDistance: y });
+    } else {
+      adv.push({ focusMode:'continuous' });
+    }
+    tr.applyConstraints({ advanced: adv })
+      .then(function(){
+        setTimeout(function(){ if(activo) $('estadoScan').textContent='Escaneando...'; }, 1200);
+      })
+      .catch(function(){
+        try{ tr.applyConstraints({ advanced:[{ focusMode:'continuous' }] }); }catch(e){}
+        if(activo) $('estadoScan').textContent='Enfoque no disponible, escaneando...';
+      });
+  }catch(e){ if(activo) $('estadoScan').textContent='Escaneando...'; }
+}
+$('video').addEventListener('click', function(ev){ tapEnfocar(ev.clientX, ev.clientY); });
+$('video').addEventListener('touchend', function(ev){
+  var t = ev.changedTouches && ev.changedTouches[0];
+  if(t) tapEnfocar(t.clientX, t.clientY);
+});
 function procesar(codigo){
   contadorScan++; ultimoCodigo = codigo;
   $('detScan').textContent = '';
