@@ -235,10 +235,32 @@ def _ejecutar_opcion(opcion):
             import servidor
             servidor.iniciar_servidores()
             ip = servidor.obtener_ip_local()
-            url_web = f'https://{ip}:8443/app?t={servidor.TOKEN_WEB}'
             print()
             print('  ESCANER DE CODIGOS WEB (navegador del celular)')
             print('  Sin Expo: se abre en Chrome/Safari.')
+            print()
+            print('  Como se conectaran los celulares?')
+            print('    1 = Por INTERNET (tunel Cloudflare): desde CUALQUIER red')
+            print('    2 = Red local (mismo Wi-Fi o hotspot del PC)')
+            modo = preguntar('  Elige (1 o 2) [1]: ').strip() or '1'
+
+            url_web = None
+            publica = False
+            if modo == '1':
+                print()
+                print('  Creando tunel publico de Cloudflare...')
+                try:
+                    publica_url = servidor.iniciar_tunel(
+                        f'http://127.0.0.1:8000', timeout=90)
+                    url_web = f'{publica_url}/app?t={servidor.TOKEN_WEB}'
+                    publica = True
+                except Exception as te:
+                    print(f'  (No se pudo crear el tunel publico: {te})')
+                    print('  Continuando con la red local...')
+            if not url_web:
+                url_web = f'https://{ip}:8443/app?t={servidor.TOKEN_WEB}'
+
+            print()
             print('  Acceso SOLO por este QR (lleva el codigo de autorizacion):')
             print()
             try:
@@ -247,12 +269,22 @@ def _ejecutar_opcion(opcion):
                 pass
             print()
             print(f'  URL: {consola.amarillo(url_web)}')
-            print(f'  API: {consola.verde(f"http://{ip}:8000")}')
+            if not publica:
+                print(f'  API: {consola.verde(f"http://{ip}:8000")}')
             print('-' * 55)
             print()
-            print('  En el celular: escanea el QR, acepta la advertencia del')
-            print('  certificado (una sola vez) y presiona INICIAR para la camara.')
+            if publica:
+                print('  En el celular, desde CUALQUIER red: escanea el QR y')
+                print('  presiona INICIAR para la camara. El certificado HTTPS')
+                print('  es valido (Cloudflare), no pide advertencias, y la')
+                print('  camara funciona en Android e iPhone.')
+            else:
+                print('  En el celular: escanea el QR, acepta la advertencia del')
+                print('  certificado (una sola vez) y presiona INICIAR.')
+                print('  OJO: esto solo funciona si el celular esta en la MISMA red')
+                print('  que este PC (mismo Wi-Fi o hotspot).')
             print()
+            print('  Nota: la clave de acceso viaja dentro del QR (?t=...).')
             print('  Ctrl+C para volver al menu.')
             try:
                 import time
@@ -260,6 +292,10 @@ def _ejecutar_opcion(opcion):
                     time.sleep(3600)
             except KeyboardInterrupt:
                 print()
+                try:
+                    servidor.detener_tunel()
+                except Exception:
+                    pass
                 print('  Servidor detenido.')
         except Exception as e:
             print(f'  Error: {e}')

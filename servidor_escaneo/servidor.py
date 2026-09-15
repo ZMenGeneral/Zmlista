@@ -19,9 +19,12 @@ import html
 import ipaddress
 import json
 import os
+import re
 import secrets
 import socket
+import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -1218,8 +1221,106 @@ def iniciar_servidores():
     return 8000, 8443
 
 
+# --- Túnel público (Cloudflare Quick Tunnel) ---
+TUNEL_BIN = os.path.join(CARPETA_SERVIDOR, 'cloudflared.exe')
+_tunel_proc = None
+_tunel_url = None
+
+
+def _ruta_cloudflared():
+    """Devuelve la ruta de cloudflared (junto al servidor o en PATH)."""
+    if os.path.isfile(TUNEL_BIN):
+        return TUNEL_BIN
+    import shutil
+    return shutil.which('cloudflared')
+
+
+def iniciar_tunel(url_local='http://127.0.0.1:8000', timeout=90):
+    """Crea un túnel público de Cloudflare hacia el servidor local.
+
+    Devuelve la URL pública base (https://<aleatoria>.trycloudflare.com)
+    y deja el proceso corriendo en segundo plano. Requiere cloudflared.exe
+    en la carpeta del servidor (o en el PATH)."""
+    global _tunel_proc, _tunel_url
+    if _tunel_proc is not None and _tunel_proc.poll() is None and _tunel_url:
+        return _tunel_url
+
+    exe = _ruta_cloudflared()
+    if not exe:
+        raise RuntimeError(
+            'No se encontro cloudflared.exe. Descargalo desde'
+            ' https://github.com/cloudflare/cloudflared/releases y colocalo'
+            ' en la carpeta servidor_escaneo/ (o agregalo al PATH).')
+
+    flags = ['--no-autoupdate', '--url', url_local]
+    kwargs = {'stdout': subprocess.PIPE, 'stderr': subprocess.STDOUT,
+              'text': True, 'encoding': 'utf-8', 'errors': 'replace'}
+    if os.name == 'nt':
+        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+    _tunel_proc = subprocess.Popen([exe, 'tunnel'] + flags, **kwargs)
+
+    patron = re.compile(r'https://[a-z0-9-]+\.trycloudflare\.com')
+    url = None
+    inicio = time.time()
+    try:
+        while time.time() - inicio < timeout:
+            linea = _tunel_proc.stdout.readline()
+            if not linea:
+                if _tunel_proc.poll() is not None:
+                    break
+                continue
+            t = linea.strip()
+            if t:
+                print(f'  [TUNEL] {t}')
+            m = patron.search(linea)
+            if m and 'has been created' not in linea.lower():
+                url = m.group(0).rstrip('/')
+                break
+    except Exception:
+        pass
+
+    if not url:
+        detener_tunel()
+        raise RuntimeError(
+            'No se pudo obtener la URL publica del tunel (tiempo agotado).')
+
+    _tunel_url = url
+
+    def _drenar():
+        try:
+            if _tunel_proc and _tunel_proc.stdout:
+                for linea in _tunel_proc.stdout:
+                    t = linea.strip()
+                    if t and 'trycloudflare.com' not in t:
+                        print(f'  [TUNEL] {t}')
+        except Exception:
+            pass
+
+    threading.Thread(target=_drenar, daemon=True).start()
+    return url
+
+
+def detener_tunel():
+    """Detiene el túnel de Cloudflare si está corriendo."""
+    global _tunel_proc, _tunel_url
+    if _tunel_proc is not None:
+        try:
+            if _tunel_proc.poll() is None:
+                _tunel_proc.terminate()
+                try:
+                    _tunel_proc.wait(timeout=3)
+                except Exception:
+                    _tunel_proc.kill()
+        except Exception:
+            pass
+        _tunel_proc = None
+    _tunel_url = None
+
+
 def main():
     parser = argparse.ArgumentParser(description='Servidor de escaneo de códigos')
+    parser.add_argument('--tunel', action='store_true',
+                        help='Exponer por Internet con un tunel publico de Cloudflare')
     parser.add_argument('--port', type=int, default=8000, help='Puerto (default: 8000)')
     parser.add_argument('--host', default='0.0.0.0', help='Host (default: 0.0.0.0)')
     args = parser.parse_args()
@@ -1229,12 +1330,29 @@ def main():
     url = f'http://{ip}:{puerto_http}'
     url_web = f'https://{ip}:{puerto_https}/app?t={TOKEN_WEB}'
 
+    publica = None
+    if args.tunel:
+        print('  Creando tunel publico de Cloudflare...')
+        try:
+            publica = iniciar_tunel(f'http://127.0.0.1:{puerto_http}', timeout=90)
+        except Exception as e:
+            print(f'  (No se pudo crear el tunel publico: {e})')
+    if publica:
+        url_web = f'{publica}/app?t={TOKEN_WEB}'
+
     print()
     print('=' * 60)
     print('  SERVIDOR DE ESCANEO DE CODIGOS DE BARRAS (WEB)')
     print('=' * 60)
     print()
-    print(f'  IP local: {consola_verde(ip)}')
+    if publica:
+        print('  Acceso PUBLICO (cualquier red) via tunel de Cloudflare.')
+        print(f'  IP local: {consola_verde(ip)}')
+    else:
+        print(f'  IP local: {consola_verde(ip)}')
+        print()
+        print('  Solo red local (mismo Wi-Fi o hotspot). Para usarlo desde')
+        print('  cualquier red, inicia con: python servidor.py --tunel')
     print()
     print('  Escaner WEB en el navegador del celular.')
     print('  Acceso SOLO por este QR (lleva el codigo de autorizacion):')
@@ -1247,17 +1365,27 @@ def main():
         pass
     print()
     print(f'  URL: {consola_amarillo(url_web)}')
-    print(f'  API: {consola_amarillo(url)}')
+    if not publica:
+        print(f'  API: {consola_amarillo(url)}')
     print()
-    print('  En el celular: acepta la advertencia del certificado (una vez)')
-    print('  y luego presiona INICIAR para usar la camara.')
+    if publica:
+        print('  En el celular (desde cualquier red): escanea el QR y presiona')
+        print('  INICIAR para usar la camara. No pide aceptar certificados:')
+        print('  el certificado es valido (HTTPS publico).')
+    else:
+        print('  En el celular: acepta la advertencia del certificado (una vez)')
+        print('  y luego presiona INICIAR para usar la camara.')
     print('-' * 60)
     print()
-    print('  Esperando escaneos...')
+    print('  Esperando escaneos...  (Ctrl+C para detener)')
     print()
 
-    while True:
-        time.sleep(3600)
+    try:
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        print('\n  Deteniendo tunel...')
+        detener_tunel()
 
 
 if __name__ == '__main__':
